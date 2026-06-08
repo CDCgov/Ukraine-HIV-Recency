@@ -1,0 +1,108 @@
+{
+  "excel_path": "data/input_data.xlsx",
+  "analysis_mode": "h3_hexagons",
+  "administrative_units": {
+    "adm3_path": "data/Ukraine_Adm3_OTG.geojson",
+    "adm2_path": "data/Ukraine_Adm2_Rayon.geojson",
+    "adm1_path": "data/Ukraine_Adm1_Oblast.geojson",
+    "otg_col": "ADM3_EN",
+    "rayon_col": "ADM2_EN",
+    "oblast_col": "ADM1_EN"
+  },
+  "h3_hexagons": {
+    "adm3_path": null,
+    "adm2_path": "data/h3_hexagons_res4.geojson",
+    "adm1_path": null,
+    "otg_col": "h3_id",
+    "rayon_col": "h3_id",
+    "oblast_col": "h3_id",
+    "h3_id_col": "h3_id",
+    "res5_path": null,
+    "res4_path": "data/h3_hexagons_res4.geojson",
+    "res3_path": "data/h3_hexagons_res3.geojson",
+    "resolution_level3": 5,
+    "resolution_level2": 4,
+    "resolution_level1": 3
+  },
+  "output_dir": "output",
+  "target_crs": "EPSG:3857",
+  "analysis_period": {
+    "start": "2026-02-01",
+    "end": "2026-04-30"
+  },
+  "residual_thresholds": {
+    "obvious": 2.0,
+    "slight": 1.0
+  },
+  "color_map": {
+    "Obvious Increase": "#ef2bc1",
+    "Slight Increase": "#ffab4d",
+    "No Difference": "#d3d3d3",
+    "Slight Decrease": "#38d430",
+    "Obvious Decrease": "#00b9e5",
+    "Established hotspot": "#d62728",
+    "Emerging hotspot": "#fb8500",
+    "Stable high-burden": "#ffd60a",
+    "Declining from high-burden": "#48cae4",
+    "Emerging decrease": "#a0e0a8",
+    "Significant decrease": "#06d6a0",
+    "Normal": "#d3d3d3",
+    "No Data": "#ffffff"
+  },
+  "column_names": {
+    "territory_name": "territory_name",
+    "recent_count_curr": "recent_count_curr",
+    "recent_count_hist": "recent_count_hist",
+    "all_tested_curr": "all_tested_curr",
+    "all_tested_hist": "all_tested_hist",
+    "recent_proportion_curr": "recent_proportion_curr",
+    "recent_proportion_hist": "recent_proportion_hist",
+    "predicted": "predicted",
+    "residual": "residual",
+    "z_national": "z_national",
+    "z_residual": "z_residual",
+    "combined_z": "combined_z",
+    "classification": "classification",
+    "recommended_level": "recommended_level",
+    "deviation_pct": "deviation_pct",
+    "national_baseline": "national_baseline",
+    "log_tested": "log_tested",
+    "predicted_prob": "predicted_prob",
+    "prob_lower": "prob_lower",
+    "prob_upper": "prob_upper",
+    "count_lower": "count_lower",
+    "count_upper": "count_upper",
+    "exceedance_prob": "exceedance_prob"
+  },
+  "bayesian": {
+    "use_non_centered": true,
+    "auto_select_parametrization": true,
+    "non_centered_threshold_territories": 100,
+    "non_centered_threshold_avg_tests": 50,
+    "prior_sigma": 1.0,
+    "prior_sigma_small_sample": 0.5,
+    "small_sample_threshold": 20,
+    "epidemiological_sensitivity": "balanced"
+  },
+  "io_optimization": {
+    "use_parquet": true,
+    "cache_geodata": true
+  },
+  "validation": {
+    "use_pydantic": true,
+    "strict_types": true
+  },
+  "reliability_weights": {
+    "data_adequacy": 40,
+    "sample_size": 30,
+    "model_quality": 30
+  },
+  "detection": {
+    "smr_threshold": 2.0,
+    "sir_threshold": 1.5
+  },
+  "watchlist": {
+    "burden_top_frac": 0.80,
+    "rate_percentile": 0.80
+  }
+}
