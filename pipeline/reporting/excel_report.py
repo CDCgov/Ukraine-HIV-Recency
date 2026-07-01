@@ -96,6 +96,11 @@ def write_report(cfg: Dict[str, Any], active: gpd.GeoDataFrame,
         if _col in active.columns and _col not in report_cols:
             report_cols.append(_col)
 
+    # Two-part model (Fu 2023): presence sub-model probability, present only
+    # when the two-part / zero-inflated Beta-Binomial model was run.
+    if 'presence_prob' in active.columns and 'presence_prob' not in report_cols:
+        report_cols.append('presence_prob')
+
     # Combined burden + rate watch-list (pipeline.classification.add_watchlist):
     # an additive triage ranking that surfaces high-burden centres the rate
     # axis misses on sparse recency data.

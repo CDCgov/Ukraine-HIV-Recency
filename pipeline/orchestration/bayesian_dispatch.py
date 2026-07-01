@@ -41,6 +41,20 @@ def run_bayesian_dispatch(bayesian: Any,
         logger.info("⏭Skipping standard Bayesian (Bayesian Covariates only mode)")
         return gdf.copy(), None
 
+    # Two-part (zero-inflated Beta-Binomial) model -- Fu 2023 style. When
+    # enabled it supersedes both the standard and the Hurdle branch: its
+    # presence sub-model handles zero-count territories directly (a territory
+    # with many tests and zero recent events is treated as structurally absent,
+    # not shrunk to the national rate), which is exactly the failure mode the
+    # single-part SIR ratio inflated into false 'Emerging hotspot's.
+    if config.get('two_part_model', False):
+        parametrization = config.get('bayesian_parametrization', 'non_centered')
+        logger.info("Using Two-Part zero-inflated Beta-Binomial model (Fu 2023 style)")
+        return bayesian.run_two_part_model(
+            gdf, level_name, national_rate, national_se,
+            parametrization=parametrization,
+        )
+
     if level_use_hurdle and 'site_present' in gdf.columns:
         n_total = len(gdf)
         n_structural_zeros = (~gdf['site_present']).sum()
