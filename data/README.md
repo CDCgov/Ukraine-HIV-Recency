@@ -5,6 +5,11 @@ the case data file is placed locally. **The case data file is not part of
 this repository** — it is git-ignored and shared with authorised
 collaborators separately.
 
+> **No access to the case file?** A fully synthetic alternative can be
+> generated with the notebook in [`../synthetic_data/`](../synthetic_data/),
+> which produces `synthetic_input_data_double.xlsx` here for end-to-end testing
+> without any real data.
+
 ## Files
 
 ### 1. Case data — `input_data.xlsx` (NOT in the repository)

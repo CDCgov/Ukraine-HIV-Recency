@@ -21,6 +21,20 @@ collaborators. The pipeline reads facility-based recency-testing records
 rules. Only the public geometry layers (H3 grid, administrative boundaries)
 are version-controlled.
 
+### Testing the pipeline without the confidential data
+
+You do **not** need the confidential case file to try the pipeline. A fully
+synthetic test dataset ships with the repository at
+`data/synthetic_input_data.xlsx`, and the notebook
+`synthetic_data/synthetic_pipeline_public.ipynb` turns it into the file the
+pipeline runs on (`data/synthetic_input_data_double.xlsx`), using **no real data
+at any point**. The same notebook also demonstrates the geographic-privacy tools
+(reversible coordinate encryption and donut geomasking).
+[`synthetic_data/README.md`](synthetic_data/README.md) has a **step-by-step
+getting-started guide** — where the test data lives, how to generate the input,
+how to run the pipeline, and where the outputs land — plus the provenance chain
+and an honest privacy statement.
+
 ---
 
 ## What it does
