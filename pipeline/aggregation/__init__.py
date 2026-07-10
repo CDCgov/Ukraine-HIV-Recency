@@ -10,6 +10,7 @@ from pipeline.aggregation.territory import (
     aggregate_stats_stratified,
     aggregate_stats_hard_stratified,
     detect_outbreak_and_artifact,
+    apply_fdr_correction,
 )
 from pipeline.aggregation.testing_network import (
     analyze_site_profile,
@@ -29,6 +30,7 @@ __all__ = [
     "aggregate_stats_stratified",
     "aggregate_stats_hard_stratified",
     "detect_outbreak_and_artifact",
+    "apply_fdr_correction",
     "analyze_site_profile",
     "calculate_testing_intensity",
     "classify_network_stability",

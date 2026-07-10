@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 from statsmodels.stats.proportion import proportion_confint
+from statsmodels.stats.multitest import multipletests
 
 from pipeline.aggregation.outbreak_defaults import soft_fallback_result
 from pipeline.aggregation.testing_network import (
@@ -363,7 +364,7 @@ def detect_outbreak_and_artifact(territory_idx: int, df_hard: pd.DataFrame,
         - testing_artifact: bool
         - artifact_contribution: float (0-100, % of increase due to testing change)
         - outbreak_type: str (e.g., "REAL OUTBREAK IN HIGH-RISK GROUP")
-        - explanation: str (detailed explanation in Ukrainian)
+        - explanation: str (detailed English explanation)
         - stratification_method: "HARD" or "SOFT"
     """
     # Get data for this territory (2 rows: high + low)
@@ -405,7 +406,15 @@ def detect_outbreak_and_artifact(territory_idx: int, df_hard: pd.DataFrame,
 
     # Detect outbreak in each group using binomial test
     # High-risk group: test if current > historical
-    if high_n_curr >= 3 and high_n_hist >= 3:
+    # NOTE on multiplicity: the raw ``< 0.05`` flags set here are provisional.
+    # Because this binomial test is run for every risk group of every territory,
+    # taking each raw p < 0.05 at face value would inflate the family-wide false
+    # positive rate. ``apply_fdr_correction`` re-derives the authoritative flags
+    # with a Benjamini-Hochberg correction across all territories (the same FDR
+    # control used for the main taxonomy). The raw flag is kept only as a
+    # provisional value for the fallback path where no family pass runs.
+    high_tested = (high_n_curr >= 3 and high_n_hist >= 3)
+    if high_tested:
         high_pvalue = stats.binomtest(
             int(high_curr_prop * high_n_curr),
             high_n_curr,
@@ -418,7 +427,8 @@ def detect_outbreak_and_artifact(territory_idx: int, df_hard: pd.DataFrame,
         high_pvalue = 1.0
 
     # Low-risk group: test if current > historical
-    if low_n_curr >= 3 and low_n_hist >= 3:
+    low_tested = (low_n_curr >= 3 and low_n_hist >= 3)
+    if low_tested:
         low_pvalue = stats.binomtest(
             int(low_curr_prop * low_n_curr),
             low_n_curr,
@@ -441,7 +451,8 @@ def detect_outbreak_and_artifact(territory_idx: int, df_hard: pd.DataFrame,
     high_total_hist = int(high_n_hist)
     low_total_hist  = int(low_n_hist)
 
-    if high_total_curr > 0 and high_total_hist > 0:
+    testing_tested = (high_total_curr > 0 and high_total_hist > 0)
+    if testing_tested:
         # Two-proportion z-test
         # H0: prop_high_curr == prop_high_hist
         # H1: prop_high_curr != prop_high_hist
@@ -451,8 +462,10 @@ def detect_outbreak_and_artifact(territory_idx: int, df_hard: pd.DataFrame,
         ])
         chi2, testing_pvalue, _, _ = stats.chi2_contingency(contingency_table)
 
-        # IMPROVED: Don't use simple boolean - testing artifact can coexist with outbreak
-        # We'll calculate artifact_contribution below and use that for classification
+        # Provisional raw flag (see the multiplicity note above): the composition
+        # chi-square is likewise run per territory, so apply_fdr_correction
+        # re-derives this flag across the family. The effect-size guard
+        # (|shift| > 0.05) is kept in the family pass as well.
         testing_composition_changed = (testing_pvalue < 0.05 and abs(testing_shift) > 0.05)
 
         logger.debug(f"Testing composition check: shift={testing_shift:.3f}, p={testing_pvalue:.3f}, "
@@ -600,6 +613,10 @@ def detect_outbreak_and_artifact(territory_idx: int, df_hard: pd.DataFrame,
         'explanation': explanation,
         'high_pvalue': high_pvalue,
         'low_pvalue': low_pvalue,
+        'testing_pvalue': testing_pvalue,
+        'high_tested': high_tested,
+        'low_tested': low_tested,
+        'testing_tested': testing_tested,
         'testing_shift': testing_shift,
         'stratification_method': 'HARD',
         'high_observed_curr': high_curr_prop,
@@ -609,6 +626,117 @@ def detect_outbreak_and_artifact(territory_idx: int, df_hard: pd.DataFrame,
         'low_ci_lower': low_ci_lo,
         'low_ci_upper': low_ci_hi,
     }
+
+
+def _bh_apply(items: list, alpha: float) -> None:
+    """Run Benjamini-Hochberg on a list of ``(entry, key)`` test slots.
+
+    Reads ``<key>_pvalue`` from each entry and writes back ``<key>_qvalue`` (the
+    BH-adjusted p-value) and ``<key>_significant_fdr`` (the family-wide decision).
+    """
+    if not items:
+        return
+    pvals = [float(entry.get(f'{key}_pvalue', 1.0)) for entry, key in items]
+    reject, qvals, _, _ = multipletests(pvals, alpha=alpha, method='fdr_bh')
+    for (entry, key), rej, q in zip(items, reject, qvals):
+        entry[f'{key}_qvalue'] = float(q)
+        entry[f'{key}_significant_fdr'] = bool(rej)
+
+
+def _reconcile_entry_after_fdr(entry: dict) -> None:
+    """Update one territory's flags, artifact severity and text from the FDR pass.
+
+    The correction can only withdraw a call, so a raw-significant outbreak that
+    fails the family threshold is downgraded and the explanation is annotated to
+    say so; a surviving call is annotated as FDR-confirmed.
+    """
+    high_sig = bool(entry.get('high_significant_fdr', False))
+    low_sig = bool(entry.get('low_significant_fdr', False))
+    comp_sig = bool(entry.get('testing_significant_fdr', False))
+
+    raw_high = bool(entry.get('high_outbreak', False))
+    raw_low = bool(entry.get('low_outbreak', False))
+
+    entry['high_outbreak'] = high_sig
+    entry['low_outbreak'] = low_sig
+
+    # The composition change keeps the effect-size guard from the raw pass.
+    testing_shift = float(entry.get('testing_shift', 0.0))
+    comp_changed = comp_sig and abs(testing_shift) > 0.05
+
+    # Recompute artifact severity from the FDR composition decision, preserving
+    # the artifact_contribution magnitude computed during detection.
+    contrib = float(entry.get('artifact_contribution', 0.0))
+    if comp_changed and contrib > 50:
+        entry['testing_artifact'] = True
+        entry['artifact_severity'] = 'PREDOMINANTLY_ARTIFACT'
+    elif comp_changed and contrib > 20:
+        entry['testing_artifact'] = True
+        entry['artifact_severity'] = 'MIXED'
+    elif comp_changed:
+        entry['testing_artifact'] = False
+        entry['artifact_severity'] = 'MINOR_ARTIFACT'
+    else:
+        entry['testing_artifact'] = False
+        entry['artifact_severity'] = 'NO_ARTIFACT'
+
+    # Annotate the explanation so a reader sees the correction outcome.
+    if (raw_high or raw_low) and not (high_sig or low_sig):
+        entry['explanation'] = (
+            "[Not significant after Benjamini-Hochberg FDR correction across "
+            "territories - descriptive only.] " + str(entry.get('explanation', ''))
+        )
+        entry['outbreak_type'] = 'NO SIGNIFICANT OUTBREAK (after FDR)'
+    elif high_sig or low_sig:
+        entry['explanation'] = (
+            "[Significant after Benjamini-Hochberg FDR correction across "
+            "territories.] " + str(entry.get('explanation', ''))
+        )
+
+
+def apply_fdr_correction(territory_analysis: list, alpha: float = 0.05) -> list:
+    """Benjamini-Hochberg FDR correction across the per-territory stratified tests.
+
+    :func:`detect_outbreak_and_artifact` runs a one-sided binomial test for each
+    risk group and a chi-square composition test for every HARD-eligible
+    territory. Judging each raw ``p < alpha`` in isolation inflates the
+    family-wide false positive rate across the dozens of tests in a run. This
+    routine re-derives the authoritative flags with a Benjamini-Hochberg
+    correction -- the same style of FDR control the main SMR/SIR taxonomy already
+    uses -- so the stratified checks read as honest descriptive diagnostics
+    rather than a swarm of uncorrected significance calls.
+
+    Two independent families are corrected separately: the *outbreak* family
+    (every performed high/low binomial test) and the *composition* family (every
+    performed chi-square testing-shift test). Only tests that actually ran (the
+    ``*_tested`` flags) enter their family. Entries are mutated in place and the
+    list is returned for convenience.
+    """
+    if not territory_analysis:
+        return territory_analysis
+
+    outbreak_items = []
+    for entry in territory_analysis:
+        if entry.get('high_tested'):
+            outbreak_items.append((entry, 'high'))
+        if entry.get('low_tested'):
+            outbreak_items.append((entry, 'low'))
+    _bh_apply(outbreak_items, alpha)
+
+    comp_items = [(entry, 'testing') for entry in territory_analysis
+                  if entry.get('testing_tested')]
+    _bh_apply(comp_items, alpha)
+
+    for entry in territory_analysis:
+        _reconcile_entry_after_fdr(entry)
+
+    n_out = sum(1 for e in territory_analysis if e.get('high_outbreak') or e.get('low_outbreak'))
+    logger.info(
+        f"FDR correction (Benjamini-Hochberg, alpha={alpha}): "
+        f"{len(outbreak_items)} group-outbreak tests, {len(comp_items)} composition "
+        f"tests corrected; {n_out} territories retain an outbreak flag after correction"
+    )
+    return territory_analysis
 
 
 def aggregate_stats_hard_stratified(gdf_admin: gpd.GeoDataFrame, gdf_cases: gpd.GeoDataFrame,

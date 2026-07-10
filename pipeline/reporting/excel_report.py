@@ -132,16 +132,18 @@ def write_report(cfg: Dict[str, Any], active: gpd.GeoDataFrame,
         df_report.to_excel(writer, sheet_name='Data', index=False)
 
         df_disclaimer = pd.DataFrame({
-            'WARNING': ['FACILITY-BASED SURVEILLANCE DISCLAIMER'],
-            'English': [disclaimer['en']],
-            'Ukrainian': [disclaimer['ua']],
+            'WARNING': ['FACILITY-BASED SURVEILLANCE DISCLAIMER',
+                        'LOW STATISTICAL RELIABILITY (SPARSE RECENT EVENTS)'],
+            'English': [disclaimer['en'],
+                        disclaimer.get('reliability_en', '')],
+            'Ukrainian': [disclaimer['ua'], ''],
         })
         df_disclaimer.to_excel(writer, sheet_name='WARNING READ FIRST', index=False)
 
         metadata = {
             'Field': ['Analysis Period', 'Baseline Period', 'Level', 'Model Type',
                       'Total Territories', 'Active Sites', 'Structural Zeros',
-                      'Data Type', 'Interpretation Warning'],
+                      'Data Type', 'Interpretation Warning', 'Reliability Warning'],
             'Value': [
                 period_str,
                 'Previous 12 months',
@@ -152,6 +154,7 @@ def write_report(cfg: Dict[str, Any], active: gpd.GeoDataFrame,
                 len(df_report) - df_report['all_tested_curr'].gt(0).sum() if 'all_tested_curr' in df_report.columns else 'N/A',
                 'Facility-based surveillance',
                 disclaimer['short_en'],
+                disclaimer.get('short_reliability_en', ''),
             ],
         }
         pd.DataFrame(metadata).to_excel(writer, sheet_name='Metadata', index=False)

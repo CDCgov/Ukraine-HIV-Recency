@@ -36,6 +36,7 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 
+from pipeline.aggregation import apply_fdr_correction
 from pipeline.analyzers.base import BaseHotspotAnalyzer
 from pipeline.analyzers.bayesian import BayesianAnalyzer
 from pipeline.analyzers._covariates_runtime import (
@@ -441,8 +442,18 @@ class BayesianCovariatesAnalyzer(BaseHotspotAnalyzer):
                                 'testing_shift': hard_result['testing_shift'],
                                 'testing_artifact': hard_result['testing_artifact'],
                                 'artifact_contribution': hard_result['artifact_contribution'],
+                                'artifact_severity': hard_result['artifact_severity'],
                                 'outbreak_type': hard_result['outbreak_type'],
                                 'explanation': hard_result['explanation'],
+                                # Raw p-values and per-test "was it run" flags, kept so
+                                # apply_fdr_correction can re-derive the outbreak/composition
+                                # flags with a family-wide Benjamini-Hochberg correction.
+                                'high_pvalue': hard_result['high_pvalue'],
+                                'low_pvalue': hard_result['low_pvalue'],
+                                'testing_pvalue': hard_result['testing_pvalue'],
+                                'high_tested': hard_result['high_tested'],
+                                'low_tested': hard_result['low_tested'],
+                                'testing_tested': hard_result['testing_tested'],
                                 'stratification_method': 'HARD',
                                 'overall_change': row.get('predicted_prob', 0.0) - row.get('recent_proportion_hist', 0.0)
                             })
@@ -463,11 +474,22 @@ class BayesianCovariatesAnalyzer(BaseHotspotAnalyzer):
                     'testing_shift': 0.0,
                     'testing_artifact': False,
                     'artifact_contribution': 0.0,
+                    'artifact_severity': 'NO_ARTIFACT',
                     'outbreak_type': 'INSUFFICIENT DATA',
-                    'explanation': 'Insufficient data for HARD stratification (need ≥3 tests in both groups)',
+                    'explanation': 'Insufficient data for HARD stratification (need >=3 tests in both groups)',
+                    # No stratified tests were run for this territory, so it takes
+                    # part in no FDR family.
+                    'high_tested': False,
+                    'low_tested': False,
+                    'testing_tested': False,
                     'stratification_method': 'SOFT',
                     'overall_change': row.get('predicted_prob', 0.0) - row.get('recent_proportion_hist', 0.0)
                 })
+
+            # Family-wide Benjamini-Hochberg correction across all the per-territory
+            # stratified tests, so the outbreak/composition flags are FDR-controlled
+            # rather than a swarm of uncorrected per-territory p < 0.05 calls.
+            apply_fdr_correction(territory_analysis)
 
             # Simplified analysis for soft stratification
             # No separate high/low outbreak detection - just overall territory analysis

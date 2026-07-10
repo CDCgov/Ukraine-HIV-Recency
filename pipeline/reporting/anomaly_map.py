@@ -154,6 +154,23 @@ def render_anomaly_map(cfg, national_baseline_rate, gdf_oblast_opt, output_path,
     plt.title(title, fontsize=14, fontweight='bold')
     ax.set_axis_off()
 
+    # Standing caveat footnote (text only -- colours and labels are unchanged).
+    # Recent events are sparse, so nearly every territory is low-reliability; the
+    # map is a triage signal, not a precise or population-level prevalence map.
+    if lang == 'ua':
+        caveat = ("Обережно: точки — заклади тестування, не місце проживання. "
+                  "Недавніх подій мало, тож майже всі території низьконадійні: "
+                  "карта є сигналом для пріоритезації, а не точним виміром.")
+    else:
+        caveat = ("Caveat: points are testing facilities, not patient residence. "
+                  "Recent events are sparse, so nearly all territories are "
+                  "low-reliability -- read this map as a triage signal, not a "
+                  "precise or population-level prevalence map.")
+    plt.figtext(0.5, 0.005, caveat, ha='center', va='bottom', fontsize=7,
+                style='italic', wrap=True,
+                bbox=dict(boxstyle='round', facecolor='#fff3cd',
+                          edgecolor='#e0a800', alpha=0.85))
+
     try:
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         logger.info(f"Map saved ({lang}): {output_path}")

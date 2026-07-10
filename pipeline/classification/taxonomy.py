@@ -47,6 +47,15 @@ HOTSPOT_LABELS = frozenset({
 MIN_HOTSPOT_CURRENT_EVENTS = 2
 
 
+# Label for a territory that is elevated versus the national current rate but
+# whose local history is too thin (``sir_informative == False``) to support a
+# trend call. It is deliberately NOT in HOTSPOT_LABELS: the elevation is real
+# and is surfaced as its own category (and via the watch-list rate axis), but it
+# is not counted as a confirmed hotspot because the "rising / stable" claim
+# would rest on a national-dominated, not own-history-driven, SIR axis.
+ELEVATED_TREND_UNCERTAIN = "Elevated vs national (trend uncertain)"
+
+
 # Full SIR/SMR label set with stable diagnostics keys.
 SMR_SIR_LABELS = (
     ('Established hotspot',        'established_hotspot'),
@@ -55,6 +64,7 @@ SMR_SIR_LABELS = (
     ('Declining from high-burden', 'declining_from_high_burden'),
     ('Emerging decrease',          'emerging_decrease'),
     ('Significant decrease',       'significant_decrease'),
+    ('Elevated vs national (trend uncertain)', 'elevated_trend_uncertain'),
     ('Normal',                     'normal'),
 )
 
@@ -141,6 +151,21 @@ def classify_with_smr_sir(row: pd.Series,
         absent = pp is not None and not pd.isna(pp) and float(pp) < 0.5
         if too_few_events or absent:
             return "Normal"
+
+        # SIR-informativeness gate. The SIR (trend) axis compares the current
+        # rate to the territory's OWN history, and that comparison is trustworthy
+        # only when the historical test volume exceeds the Empirical-Bayes
+        # concentration K (``sir_informative``). When it does not, the SIR axis is
+        # national-dominated rather than own-history-driven, so a rise/stability
+        # claim cannot rest on it. A territory still elevated vs the national
+        # current rate (SMR high) keeps that level flag with the trend explicitly
+        # withheld; one whose only signal was the now-unreliable rise (SMR not
+        # high, e.g. "Emerging hotspot") collapses to Normal. Decrease labels are
+        # left untouched -- the concern is over-calling rises on thin history.
+        sir_informative = row.get('sir_informative', None)
+        if (sir_informative is not None and not pd.isna(sir_informative)
+                and not bool(sir_informative)):
+            return ELEVATED_TREND_UNCERTAIN if smr_high else "Normal"
     return label
 
 

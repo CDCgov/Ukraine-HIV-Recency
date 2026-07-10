@@ -318,6 +318,7 @@ DEFAULT_CONFIG = {
         "Declining from high-burden": "#48cae4",
         "Emerging decrease":          "#a0e0a8",
         "Significant decrease":       "#06d6a0",
+        "Elevated vs national (trend uncertain)": "#c77dff",
         "Normal":                     "#d3d3d3",
         "No Data":                    "#ffffff"
     },
@@ -336,6 +337,7 @@ DEFAULT_CONFIG = {
         "Declining from high-burden": "Спад із високого рівня",
         "Emerging decrease":          "Ранній спад",
         "Significant decrease":       "Значне зниження (рівень)",
+        "Elevated vs national (trend uncertain)": "Підвищено проти країни (тренд невизначений)",
         "Normal":                     "Без сигналу",
         "No Data": "Немає даних",
         "Low Reliability (weak data)": "Низька надійність (мало даних)",
