@@ -32,6 +32,35 @@ import pymc as pm
 logger = logging.getLogger(__name__)
 
 
+def _manual_ppc(ax, ppc: Any, trace: Any) -> None:
+    """Robust posterior-predictive overlay (observed vs predictive counts).
+
+    A fallback for models whose predictive ``az.plot_ppc`` cannot render: the
+    two-part zero-inflated CustomDist produces ragged internal shapes and a
+    degenerate KDE, so arviz raises. This draws the recent-count distribution of
+    the observed data against a pooled sample of the posterior predictive with
+    plain count histograms, which is model-agnostic and always renders.
+    """
+    pp = np.asarray(ppc.posterior_predictive['y_obs'].values).reshape(-1)
+    obs = None
+    for src in (ppc, trace):
+        od = getattr(src, 'observed_data', None)
+        if od is not None and 'y_obs' in od:
+            obs = np.asarray(od['y_obs'].values).reshape(-1)
+            break
+    hi = int(max(pp.max(), obs.max() if obs is not None else 0))
+    bins = np.arange(0, hi + 2) - 0.5
+    ax.hist(pp, bins=bins, density=True, alpha=0.4, color='gray',
+            label='Posterior predictive')
+    if obs is not None:
+        ax.hist(obs, bins=bins, density=True, histtype='step', linewidth=2,
+                color='C0', label='Observed')
+    ax.set_xlabel('Recent count per territory')
+    ax.set_ylabel('Density')
+    ax.set_title('Posterior predictive check')
+    ax.legend()
+
+
 class BayesianDiagnosticsFixed:
     """Fixed Bayesian diagnostics with proper PyMC context management."""
 
@@ -51,7 +80,16 @@ class BayesianDiagnosticsFixed:
                         ppc = pm.sample_posterior_predictive(trace, random_seed=42)
                     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
                     try:
-                        az.plot_ppc(ppc, ax=ax)
+                        try:
+                            az.plot_ppc(ppc, ax=ax)
+                        except (ValueError, KeyError, RuntimeError, TypeError) as e:
+                            # az.plot_ppc cannot render the two-part CustomDist
+                            # predictive (ragged shapes / degenerate KDE); fall
+                            # back to a robust manual observed-vs-predictive
+                            # count histogram so a PPC figure is always produced.
+                            logger.info(f"az.plot_ppc failed ({e}); using manual PPC histogram")
+                            ax.clear()
+                            _manual_ppc(ax, ppc, trace)
                         with warnings.catch_warnings():
                             warnings.simplefilter("ignore", UserWarning)
                             plt.tight_layout()

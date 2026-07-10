@@ -468,12 +468,18 @@ class BaseHotspotAnalyzer:
         )
         return df
 
-    def save_diagnostics(self, level_name: str, period_str: str):
-        """Thin wrapper around :func:`pipeline.reporting.save_diagnostics`."""
-        if not self.diagnostics:
+    def save_diagnostics(self, level_name: str, period_str: str, diagnostics_list=None):
+        """Thin wrapper around :func:`pipeline.reporting.save_diagnostics`.
+
+        ``diagnostics_list`` writes a specific set of diagnostics (e.g. just the
+        current level's) to this level's folder; without it the analyzer's whole
+        accumulated list is written.
+        """
+        diags = diagnostics_list if diagnostics_list is not None else self.diagnostics
+        if not diags:
             return
         diag_path = self.get_output_path(level_name, f"Diagnostics_{period_str}.xlsx")
-        _save_diagnostics(self.diagnostics, diag_path)
+        _save_diagnostics(diags, diag_path)
 
     def save_report(self, gdf_admin: gpd.GeoDataFrame, level_name: str, period_str: str,
                     diagnostics: Dict[str, Any] = None):

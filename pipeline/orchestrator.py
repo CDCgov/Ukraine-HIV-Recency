@@ -535,11 +535,14 @@ class PipelineOrchestrator:
             else:
                 logger.warning(f"No valid model results for {level_name} - skipping dashboard data")
 
-        # Save diagnostics
-        if bayesian.diagnostics:
-            bayesian.save_diagnostics(level_name, period_str)
-        if bayesian_cov.diagnostics:
-            bayesian_cov.save_diagnostics(level_name, period_str)
+            # Per-level diagnostics workbook, written INSIDE the loop so every
+            # level's folder gets its own file. This previously ran once after the
+            # loop, so with more than one level only the LAST level received a
+            # Diagnostics workbook.
+            if diag_bayes:
+                bayesian.save_diagnostics(level_name, period_str, diagnostics_list=[diag_bayes])
+            if diag_bayes_cov:
+                bayesian_cov.save_diagnostics(level_name, period_str, diagnostics_list=[diag_bayes_cov])
 
         _orch_generate_audit_trail_reports(self, period_str)
 

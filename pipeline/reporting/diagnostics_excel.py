@@ -27,6 +27,12 @@ def save_diagnostics(diagnostics: Sequence[Dict[str, Any]],
     if not diagnostics:
         return
 
+    # Drop heavy, non-serialisable objects some fits attach to their diagnostics
+    # (the PyMC model, the trace, the posterior-predictive object, the observed
+    # array) so the workbook stays a clean scalar table.
+    _drop = {'model', 'trace', 'ppc', 'y_obs'}
+    diagnostics = [{k: v for k, v in d.items() if k not in _drop} for d in diagnostics]
+
     df_diag = pd.DataFrame(diagnostics)
 
     priority_cols = ['level', 'timestamp', 'model_name', 'n_territories', 'converged', 'convergence_ok',
