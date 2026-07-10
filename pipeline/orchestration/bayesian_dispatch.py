@@ -56,6 +56,17 @@ def run_bayesian_dispatch(bayesian: Any,
     # territory) under a less robust sampling configuration. The two-part model
     # is its replacement, so a lingering Hurdle request is honoured by running
     # the two-part model instead.
+    # Joint two-period model -- reads the trend directly from a hierarchical
+    # per-territory current-period change delta_i, instead of the two-step
+    # SIR-from-EB-baseline ratio. When enabled it supersedes the other branches.
+    if config.get('two_period_model', False):
+        parametrization = config.get('bayesian_parametrization', 'non_centered')
+        logger.info("Using Joint Two-Period Beta-Binomial model")
+        return bayesian.run_two_period_model(
+            gdf, level_name, national_rate, national_se,
+            parametrization=parametrization,
+        )
+
     if config.get('two_part_model', False) or level_use_hurdle:
         if level_use_hurdle and not config.get('two_part_model', False):
             logger.warning("The Truncated Binomial (Hurdle) model is retired; "

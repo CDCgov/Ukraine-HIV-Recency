@@ -51,47 +51,48 @@ def calculate_bayesian_diagnostics(trace, df, level_name, national_rate, model=N
         'convergence_fatal': convergence_fatal
     }
 
-    # Convergence diagnostics (R-hat)
+    # Convergence diagnostics (R-hat). Models name their per-territory
+    # parameters differently -- the standard/two-part model uses alpha (intercept)
+    # and beta (slope), the two-period model uses a (intercept) and delta
+    # (current-period change) -- so pick whichever intercept/slope-style variables
+    # are present rather than assuming fixed names.
     rhat = az.rhat(trace)
-    diagnostics['rhat_alpha_max'] = float(rhat['alpha'].max().values)
-    diagnostics['rhat_beta_max'] = float(rhat['beta'].max().values)
+    _int_var = next((v for v in ('alpha', 'a') if v in rhat), None)
+    _slope_var = next((v for v in ('beta', 'delta') if v in rhat), None)
+    diagnostics['rhat_alpha_max'] = float(rhat[_int_var].max().values) if _int_var else None
+    diagnostics['rhat_beta_max'] = float(rhat[_slope_var].max().values) if _slope_var else None
 
     # Hyperparameters of the random intercept. ``beta`` is now a single
     # shared coefficient (audit C1) so there is no mu_beta / sigma_beta.
     if 'mu_alpha' in rhat:
         diagnostics['rhat_mu_alpha'] = float(rhat['mu_alpha'].values)
         diagnostics['rhat_sigma_alpha'] = float(rhat['sigma_alpha'].values)
-
-        # Check all R-hat < 1.1
-        all_rhat_ok = all([
-            diagnostics['rhat_alpha_max'] < 1.1,
-            diagnostics['rhat_beta_max'] < 1.1,
-            diagnostics['rhat_mu_alpha'] < 1.1,
-            diagnostics['rhat_sigma_alpha'] < 1.1
-        ])
     else:
-        # Fixed effects model - no hyperparameters
         diagnostics['rhat_mu_alpha'] = None
         diagnostics['rhat_sigma_alpha'] = None
 
-        all_rhat_ok = all([
-            diagnostics['rhat_alpha_max'] < 1.1,
-            diagnostics['rhat_beta_max'] < 1.1
-        ])
+    # Check all available R-hats < 1.1 (a missing variable is simply skipped).
+    _rhat_vals = [diagnostics[k] for k in
+                  ('rhat_alpha_max', 'rhat_beta_max', 'rhat_mu_alpha', 'rhat_sigma_alpha')
+                  if diagnostics.get(k) is not None]
+    all_rhat_ok = all(v < 1.1 for v in _rhat_vals) if _rhat_vals else True
 
     diagnostics['convergence_ok'] = 'Yes' if all_rhat_ok else 'No'
 
     # Effective sample size
     ess = az.ess(trace)
-    diagnostics['ess_alpha_min'] = float(ess['alpha'].min().values)
-    diagnostics['ess_beta_min'] = float(ess['beta'].min().values)
+    _int_var_e = next((v for v in ('alpha', 'a') if v in ess), None)
+    _slope_var_e = next((v for v in ('beta', 'delta') if v in ess), None)
+    diagnostics['ess_alpha_min'] = float(ess[_int_var_e].min().values) if _int_var_e else None
+    diagnostics['ess_beta_min'] = float(ess[_slope_var_e].min().values) if _slope_var_e else None
 
     if 'mu_alpha' in ess:
         diagnostics['ess_mu_alpha'] = float(ess['mu_alpha'].values)
     else:
         diagnostics['ess_mu_alpha'] = None
 
-    diagnostics['ess_adequate'] = 'Yes' if diagnostics['ess_alpha_min'] > 400 else 'No'
+    diagnostics['ess_adequate'] = ('Yes' if (diagnostics['ess_alpha_min'] is not None
+                                             and diagnostics['ess_alpha_min'] > 400) else 'No')
 
     # Divergences (NEW)
     try:
