@@ -150,14 +150,20 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
                 # Beta mixing distribution: large kappa -> near-Binomial,
                 # small kappa -> strong overdispersion. Gamma(3, 0.2) is a
                 # weakly informative prior that keeps kappa positive.
-                kappa = pm.Gamma('kappa', alpha=3, beta=0.2)
+                # Weakly-informative concentration: let the data pick kappa,
+                # including near-Binomial (large kappa). The previous
+                # Gamma(3, 0.2) (mean 15) forced overdispersion even on
+                # Binomial-like data, weakening the likelihood so strong signals
+                # were over-shrunk toward the national rate (a 45/250 hex read as
+                # SMR ~1.3, i.e. Normal). See validation/overdispersion notes.
+                kappa = pm.Gamma('kappa', alpha=2, beta=0.01)
                 y_obs = pm.BetaBinomial('y_obs', alpha=p * kappa, beta=(1 - p) * kappa,
                                         n=n, observed=y)
 
                 # [WARN] IMPROVEMENT 4: Parallel sampling configuration
                 sampling_config = ParallelSamplingConfig.get_sampling_config(
                     n_territories=len(df),
-                    fast_mode=False,
+                    fast_mode=bool(self.cfg.get('fast_sampling', False)),
                     cores_override=self.cfg.get('sampling', {}).get('cores'),
                 )
                 draws = sampling_config['draws']
@@ -387,7 +393,13 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
                     alpha = pm.Normal('alpha', mu=mu_alpha, sigma=sigma_alpha, shape=len(df))
                 logit_p = alpha + beta * hist_prop
                 p = pm.Deterministic('p', pm.math.invlogit(logit_p))
-                kappa = pm.Gamma('kappa', alpha=3, beta=0.2)
+                # Weakly-informative concentration: let the data pick kappa,
+                # including near-Binomial (large kappa). The previous
+                # Gamma(3, 0.2) (mean 15) forced overdispersion even on
+                # Binomial-like data, weakening the likelihood so strong signals
+                # were over-shrunk toward the national rate (a 45/250 hex read as
+                # SMR ~1.3, i.e. Normal). See validation/overdispersion notes.
+                kappa = pm.Gamma('kappa', alpha=2, beta=0.01)
 
                 # Separate historical-window intensity: shares the hyperprior
                 # (mu_alpha, sigma_alpha) but has its OWN per-territory offsets,
@@ -422,7 +434,7 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
                              (_zibb_logp(y_h, pi, p_hist, kappa, _n_h_safe) * _hist_mask).sum())
 
                 sampling_config = ParallelSamplingConfig.get_sampling_config(
-                    n_territories=len(df), fast_mode=False,
+                    n_territories=len(df), fast_mode=bool(self.cfg.get('fast_sampling', False)),
                     cores_override=self.cfg.get('sampling', {}).get('cores'),
                 )
                 draws = sampling_config['draws']
@@ -620,7 +632,13 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
 
                 p_hist = pm.Deterministic('p_hist', pm.math.invlogit(mu_hist + a))
                 p_curr = pm.Deterministic('p_curr', pm.math.invlogit(mu_curr + a + delta))
-                kappa = pm.Gamma('kappa', alpha=3, beta=0.2)
+                # Weakly-informative concentration: let the data pick kappa,
+                # including near-Binomial (large kappa). The previous
+                # Gamma(3, 0.2) (mean 15) forced overdispersion even on
+                # Binomial-like data, weakening the likelihood so strong signals
+                # were over-shrunk toward the national rate (a 45/250 hex read as
+                # SMR ~1.3, i.e. Normal). See validation/overdispersion notes.
+                kappa = pm.Gamma('kappa', alpha=2, beta=0.01)
 
                 # Current window: observed Beta-Binomial (drives PPC / diagnostics).
                 pm.BetaBinomial('y_obs', alpha=p_curr * kappa, beta=(1 - p_curr) * kappa,
@@ -636,7 +654,7 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
                              (pm.logp(_bb_h, pt.as_tensor_variable(y_h)) * _hist_mask).sum())
 
                 sampling_config = ParallelSamplingConfig.get_sampling_config(
-                    n_territories=n_terr, fast_mode=False,
+                    n_territories=n_terr, fast_mode=bool(self.cfg.get('fast_sampling', False)),
                     cores_override=self.cfg.get('sampling', {}).get('cores'),
                 )
                 draws = sampling_config['draws']

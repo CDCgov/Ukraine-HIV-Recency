@@ -243,7 +243,10 @@ class BayesianCovariatesAnalyzer(BaseHotspotAnalyzer):
                 # Beta-Binomial likelihood. kappa is the Beta concentration:
                 # large kappa -> near-Binomial, small kappa -> strong
                 # overdispersion. Gamma(3, 0.2) is a weakly informative prior.
-                kappa = pm.Gamma('kappa', alpha=3, beta=0.2)
+                # Weakly-informative concentration (see BayesianAnalyzer): allow
+                # near-Binomial (large kappa) so strong signals are not
+                # over-shrunk by a forced-overdispersion prior.
+                kappa = pm.Gamma('kappa', alpha=2, beta=0.01)
                 obs = pm.BetaBinomial('obs', alpha=p * kappa, beta=(1 - p) * kappa,
                                       n=n, observed=y)
 
