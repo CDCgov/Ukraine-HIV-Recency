@@ -470,28 +470,36 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
             saved_model = model
             logger.info("[OK] Two-part model converged")
 
-            # --- posterior extraction: theta (presence-weighted rate) drives
-            #     every downstream number, presence_prob is reported alongside.
-            theta_samples = trace.posterior['theta'].values.reshape(-1, len(df))
+            # --- posterior extraction. The INTENSITY p drives the rate and the
+            #     SMR/SIR taxonomy; the presence probability pi is reported and
+            #     used only as the classification presence gate. Feeding the
+            #     presence-weighted theta = pi*p into the SMR deflated strong
+            #     hotspots -- pi is shrunk below 1 even for hexes with many recent
+            #     events, so a clear 18% (45/250) hex fell just under the
+            #     exceedance cutoff and read as Normal. Zero-count territories are
+            #     kept out of the hotspot set by the presence gate (>=2 recent
+            #     events / presence_prob) in the taxonomy, so the pi weighting on
+            #     the rate is redundant as well as harmful.
+            rate_samples = trace.posterior['p'].values.reshape(-1, len(df))
             pi_mean = trace.posterior['pi'].mean(dim=['chain', 'draw']).values
-            theta_mean = theta_samples.mean(axis=0)
+            rate_mean = rate_samples.mean(axis=0)
 
             df['presence_prob'] = pi_mean
-            df['predicted_prob'] = theta_mean
-            df['predicted'] = theta_mean * n
+            df['predicted_prob'] = rate_mean
+            df['predicted'] = rate_mean * n
             df['residual'] = y - df['predicted']
-            df['prob_lower'] = np.percentile(theta_samples, 2.5, axis=0)
-            df['prob_upper'] = np.percentile(theta_samples, 97.5, axis=0)
+            df['prob_lower'] = np.percentile(rate_samples, 2.5, axis=0)
+            df['prob_upper'] = np.percentile(rate_samples, 97.5, axis=0)
 
             rng = np.random.default_rng(self.cfg.get('random_seed', 42))
-            df['count_lower'] = [float(np.percentile(rng.binomial(n[i], theta_samples[:, i]), 2.5))
+            df['count_lower'] = [float(np.percentile(rng.binomial(n[i], rate_samples[:, i]), 2.5))
                                  for i in range(len(df))]
-            df['count_upper'] = [float(np.percentile(rng.binomial(n[i], theta_samples[:, i]), 97.5))
+            df['count_upper'] = [float(np.percentile(rng.binomial(n[i], rate_samples[:, i]), 97.5))
                                  for i in range(len(df))]
-            df['exceedance_prob'] = (theta_samples > national_rate).mean(axis=0)
+            df['exceedance_prob'] = (rate_samples > national_rate).mean(axis=0)
 
             _dt = (self.cfg or {}).get('detection', {}) if isinstance(self.cfg, dict) else {}
-            p_samples_list = [theta_samples[:, i] for i in range(len(df))]
+            p_samples_list = [rate_samples[:, i] for i in range(len(df))]
             _smr_sir = BaseHotspotAnalyzer._compute_smr_sir(
                 p_samples_list, df, national_rate,
                 smr_threshold=float(_dt.get('smr_threshold', 2.0)),
