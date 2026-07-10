@@ -31,6 +31,65 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+# Display names for the report headers. Internally the columns keep their short
+# identifiers (``smr_*`` / ``sir_*``), but the classic epidemiological
+# abbreviations SMR and SIR are misleading here -- they suggest a
+# population-standardised mortality / incidence ratio, whereas these are ratios
+# of the RECENT-INFECTION PROPORTION among people TESTED at a facility network.
+# The report therefore relabels them so the reader is not misled:
+#   * SMR-style column -> "National reference ratio"  (current vs national-current)
+#   * SIR-style column -> "Historical trend ratio"    (current vs own EB-shrunk history)
+REPORT_DISPLAY_NAMES = {
+    'recent_proportion_curr': 'Recent proportion (current)',
+    'recent_proportion_hist': 'Recent proportion (history)',
+    'smr_mean':   'National reference ratio (mean)',
+    'smr_median': 'National reference ratio (median)',
+    'smr_lower':  'National reference ratio (2.5%)',
+    'smr_upper':  'National reference ratio (97.5%)',
+    'sir_mean':   'Historical trend ratio (mean)',
+    'sir_lower':  'Historical trend ratio (2.5%)',
+    'sir_upper':  'Historical trend ratio (97.5%)',
+    'exc_prob_smr':     'P(national reference ratio elevated)',
+    'exc_prob_sir':     'P(historical trend ratio elevated)',
+    'exc_prob_smr_low': 'P(national reference ratio low)',
+    'exc_prob_sir_low': 'P(historical trend ratio low)',
+    'sir_informative':  'Historical trend informative',
+    'national_rate_curr': 'National recent proportion (current)',
+    'baseline_rate_eb':   'History baseline (shrunk)',
+    'classification':          'Classification',
+    'classification_smr_sir':  'Classification (detail)',
+}
+
+
+# Glossary written as its own sheet so a reader unfamiliar with the pipeline can
+# interpret the columns and labels without external documentation.
+REPORT_GLOSSARY = [
+    ('National reference ratio',
+     'Ratio of a territory\'s recent-infection proportion to the CURRENT national '
+     'proportion. >1 means above the country now. Replaces the label "SMR", which '
+     'wrongly implies a population-standardised mortality/incidence ratio.'),
+    ('Historical trend ratio',
+     'Ratio of a territory\'s current recent-infection proportion to its OWN '
+     'empirical-Bayes-shrunk history, adjusted for the national trend. >1 means '
+     'rising versus its own past. Replaces the label "SIR".'),
+    ('Historical trend informative',
+     'True only when the territory has enough historical tests for the trend ratio '
+     'to reflect its own history rather than the national rate. When False, no '
+     'trend claim is made.'),
+    ('Hotspot',
+     'A signal of an elevated recent-infection proportion within the TESTING '
+     'NETWORK -- not a residential or population-incidence hotspot. Coordinates are '
+     'testing-facility locations, not patient residences.'),
+    ('Elevated vs national (trend uncertain)',
+     'The territory is elevated versus the current national proportion, but its '
+     'history is too thin to judge a trend, so it is not counted as a confirmed '
+     'hotspot.'),
+    ('Recent proportion',
+     'Recent (recently-acquired) HIV infections as a share of people tested. This '
+     'is the quantity the pipeline estimates; it is NOT incidence per population.'),
+]
+
+
 def write_report(cfg: Dict[str, Any], active: gpd.GeoDataFrame,
                  level_name: str, period_str: str,
                  output_path: Union[str, Path],
@@ -128,8 +187,15 @@ def write_report(cfg: Dict[str, Any], active: gpd.GeoDataFrame,
     if 'geometry' in df_report.columns:
         df_report = df_report.drop(columns=['geometry'])
 
+    # Relabel the SMR/SIR-style columns to interpretation-honest display names
+    # (the internal identifiers are kept everywhere else in the pipeline).
+    df_report = df_report.rename(columns=REPORT_DISPLAY_NAMES)
+
     with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
         df_report.to_excel(writer, sheet_name='Data', index=False)
+
+        pd.DataFrame(REPORT_GLOSSARY, columns=['Term', 'Definition']).to_excel(
+            writer, sheet_name='Glossary', index=False)
 
         df_disclaimer = pd.DataFrame({
             'WARNING': ['FACILITY-BASED SURVEILLANCE DISCLAIMER',

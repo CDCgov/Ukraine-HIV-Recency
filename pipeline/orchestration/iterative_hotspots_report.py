@@ -105,11 +105,11 @@ def generate_iterative_hotspots_report(all_hotspots: List[gpd.GeoDataFrame],
     df_cases = pd.read_excel(excel_path, sheet_name='hiv_cases')
     df_cases['test_date'] = pd.to_datetime(df_cases['test_date'])
 
-    # Generate h3_id for each case based on coordinates (resolution 4)
+    # Generate h3_id for each case based on coordinates (res3, the standardised unit)
     if 'latitude' in df_cases.columns and 'longitude' in df_cases.columns:
-        logger.info("Generating H3 IDs (resolution 4) for cases in report...")
+        logger.info("Generating H3 IDs (resolution 3) for cases in report...")
         df_cases['h3_id'] = df_cases.apply(
-            lambda row: h3.latlng_to_cell(row['latitude'], row['longitude'], 4)
+            lambda row: h3.latlng_to_cell(row['latitude'], row['longitude'], 3)
             if pd.notna(row['latitude']) and pd.notna(row['longitude']) else None,
             axis=1
         )

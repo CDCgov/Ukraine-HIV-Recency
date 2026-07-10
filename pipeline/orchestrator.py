@@ -567,11 +567,11 @@ class PipelineOrchestrator:
             self.run_iterative_analysis()
             return
 
-        # Standard mode — run each selected level (H3 resolutions and/or the
-        # ADM1 oblast level). ``analysis_levels`` is a mix of ints (hex
-        # resolutions) and the string 'Oblast'; falls back to the hex
-        # resolutions for older configs.
-        levels = self.config.get('analysis_levels') or self.config.get('hex_resolutions', [4])
+        # Standard mode — run each selected level (the res3 H3 hexagons and/or
+        # the ADM1 oblast level). ``analysis_levels`` is a mix of ints (hex
+        # resolutions) and the string 'Oblast'; falls back to res3 for older
+        # configs (the pipeline standardised on res3 + adm1).
+        levels = self.config.get('analysis_levels') or self.config.get('hex_resolutions', [3])
         self.run_for_mode('analysis', levels)
 
         # Generate model comparison

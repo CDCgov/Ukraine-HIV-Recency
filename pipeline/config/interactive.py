@@ -52,53 +52,46 @@ class InteractiveConfig:
 
     @staticmethod
     def choose_hex_resolutions() -> List[int]:
-        """Prompt for which H3 resolutions to analyse (res3, res4, or both)."""
+        """Return the H3 resolution to analyse.
+
+        The pipeline standardised on res3 (larger hexagons, more testing
+        facilities per unit). Finer resolutions are not offered because most
+        finer hexes hold zero or one active site, so the hexagon is then just a
+        relabelled facility rather than a meaningful analytical unit.
+        """
         print("\n" + "=" * 60)
-        print("H3 HEXAGON RESOLUTIONS")
+        print("H3 HEXAGON RESOLUTION")
         print("=" * 60)
-        print("1 - res3 only")
-        print("2 - res4 only")
-        print("3 - res3 + res4")
-
-        res_map = {
-            '1': [3],
-            '2': [4],
-            '3': [3, 4]
-        }
-
-        while True:
-            choice = input("Enter your choice (1/2/3): ").strip()
-            if choice in res_map:
-                return res_map[choice]
-            print("Invalid choice. Please enter 1, 2, or 3.")
+        print("Using res3 (larger hexagons, more facilities per unit).")
+        return [3]
 
     @staticmethod
     def choose_levels() -> List:
-        """Choose one or more analysis levels: res3, res4, adm1 (oblasts).
+        """Choose one or more analysis levels: res3 hexagons and/or adm1 oblasts.
 
-        Returns a list mixing H3 resolution integers (3, 4) and the string
-        'Oblast' for ADM1, in the canonical order res3, res4, adm1. Any
-        combination is allowed; each selected level is analysed separately.
+        Returns a list mixing the H3 resolution integer 3 and the string
+        'Oblast' for ADM1, in the canonical order res3, adm1. The pipeline
+        standardised on res3 for the hexagon unit; finer resolutions are not
+        offered because most finer hexes hold zero or one active site.
         """
         print("\n" + "=" * 60)
         print("ANALYSIS LEVELS")
         print("=" * 60)
-        print("res3 - coarse H3 hexagons")
-        print("res4 - fine H3 hexagons")
-        print("adm1 - administrative oblasts (coarsest; more events per unit)")
+        print("res3 - H3 hexagons (larger unit, more facilities per hexagon)")
+        print("adm1 - administrative oblasts (coarsest; most events per unit)")
         print("Enter any combination, comma-separated. Examples:")
-        print("  res4            res3,res4            res4,adm1            res3,res4,adm1")
+        print("  res3            adm1            res3,adm1")
 
-        mapping = {'res3': 3, 'res4': 4, 'adm1': 'Oblast'}
-        order = ['res3', 'res4', 'adm1']
+        mapping = {'res3': 3, 'adm1': 'Oblast'}
+        order = ['res3', 'adm1']
         while True:
-            raw = input("\nLevels [default: res4]: ").strip().lower()
+            raw = input("\nLevels [default: res3,adm1]: ").strip().lower()
             if raw == '':
-                return [4]
+                return [3, 'Oblast']
             tokens = [t.strip() for t in raw.split(',') if t.strip()]
             if tokens and all(t in mapping for t in tokens):
                 return [mapping[t] for t in order if t in tokens]
-            print("Invalid choice. Use res3, res4, adm1 (comma-separated).")
+            print("Invalid choice. Use res3, adm1 (comma-separated).")
 
     @staticmethod
     def choose_iterative_analysis_window() -> int:
@@ -178,26 +171,17 @@ class InteractiveConfig:
 
     @staticmethod
     def choose_iterative_resolution() -> int:
-        """Prompt for the single H3 resolution used in iterative mode.
+        """Return the single H3 resolution used in iterative mode.
 
-        Iterative mode analyses one resolution at a time. res3 gives coarser,
-        larger hexagons (more tests per cell -> higher reliability, less
-        spatial detail); res4 gives finer hexagons (more detail, lower
-        reliability on sparse data).
+        The pipeline standardised on res3 (larger hexagons, more tests per cell,
+        higher reliability). Finer resolutions are not offered because most finer
+        hexes hold zero or one active site.
         """
         print("\n" + "=" * 60)
         print("ITERATIVE H3 RESOLUTION")
         print("=" * 60)
-        print("3 - res3 (coarser: more tests per hexagon, higher reliability)")
-        print("4 - res4 (finer: more spatial detail, lower reliability)")
-
-        while True:
-            choice = input("\nEnter your choice (3/4) [default: 4]: ").strip()
-            if choice == '' or choice == '4':
-                return 4
-            if choice == '3':
-                return 3
-            print("Invalid choice. Please enter 3 or 4.")
+        print("Using res3 (larger hexagons, more tests per hexagon).")
+        return 3
 
     @staticmethod
     def choose_period() -> Tuple[pd.Timestamp, pd.Timestamp]:
