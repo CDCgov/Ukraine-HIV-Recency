@@ -317,7 +317,8 @@ class BaseHotspotAnalyzer:
                          sir_threshold: float = 1.5,
                          smr_low_threshold: float = 0.5,
                          sir_low_threshold: float = 1.0 / 1.5,
-                         national_rate_curr_floor: float = 1e-3):
+                         national_rate_curr_floor: float = 1e-3,
+                         leave_one_out: bool = False):
         """Thin wrapper around :func:`pipeline.standardization.smr_sir.compute_smr_sir`."""
         return compute_smr_sir(
             p_samples=p_samples,
@@ -328,6 +329,7 @@ class BaseHotspotAnalyzer:
             smr_low_threshold=smr_low_threshold,
             sir_low_threshold=sir_low_threshold,
             national_rate_curr_floor=national_rate_curr_floor,
+            leave_one_out=leave_one_out,
         )
 
     def aggregate_stats(self, gdf_admin: gpd.GeoDataFrame, gdf_cases: gpd.GeoDataFrame,

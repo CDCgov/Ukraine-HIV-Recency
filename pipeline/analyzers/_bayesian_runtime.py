@@ -252,6 +252,7 @@ def extract_posterior_summaries(cfg: Dict[str, Any],
         p_samples, df, national_rate,
         smr_threshold=float(_dt.get('smr_threshold', 2.0)),
         sir_threshold=float(_dt.get('sir_threshold', 1.5)),
+        leave_one_out=bool((cfg or {}).get('smr_leave_one_out', False)),
     )
     df['national_rate_curr'] = _smr_sir['national_rate_curr']
     df['baseline_rate_eb'] = _smr_sir['baseline_rate_eb']

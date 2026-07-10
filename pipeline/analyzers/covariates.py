@@ -15,11 +15,6 @@ When the SOFT stratified fit cannot be built (no stratification rows,
 multicollinearity, or PyMC fit failure), the analyzer falls back to a
 standard :class:`BayesianAnalyzer` run so the caller still gets a fit
 on the same data.
-
-``run_hurdle_model`` here delegates to ``BayesianAnalyzer.run_hurdle_model``
-on a temporary instance: the truncated-Binomial path on active sites
-does not change with covariates, so reusing the standard implementation
-keeps the two branches in sync.
 """
 
 from __future__ import annotations
@@ -134,7 +129,14 @@ class BayesianCovariatesAnalyzer(BaseHotspotAnalyzer):
             return gdf_admin, None
         if action == 'fallback':
             logger.info("Falling back to BayesianAnalyzer instead of BayesianCovariatesAnalyzer")
-            standard_analyzer = BayesianAnalyzer(self.cfg, self.gdf_cases, self.analysis_start, self.analysis_end)
+            # Build the standard analyzer with the correct
+            # (config, mode_suffix, orchestrator) constructor signature and copy
+            # over the case frame it needs for posterior-predictive plots. The
+            # previous call passed gdf_cases/analysis_start/analysis_end
+            # positionally, which do not match BaseHotspotAnalyzer.__init__ and
+            # raised a TypeError whenever this fallback fired.
+            standard_analyzer = BayesianAnalyzer(self.cfg, self.mode_suffix, self.orchestrator)
+            standard_analyzer.gdf_cases = self.gdf_cases if hasattr(self, 'gdf_cases') else None
             return standard_analyzer.run_model(gdf_admin, level_name, national_rate, national_se, parametrization)
 
         df_stratified = prep['df_stratified']
@@ -585,31 +587,61 @@ class BayesianCovariatesAnalyzer(BaseHotspotAnalyzer):
                     df_stratified[_col] = _default
 
             # Build the territory-level frame from the stratified results.
-            # Counts sum; proportions, posterior summaries and exceedance
-            # probabilities are averaged across the strata that make up the
-            # territory (a territory is typically split into two risk-group
-            # strata, so the average is across those).
-            df_territory = df_stratified.groupby('territory_idx').agg({
+            # Counts SUM; proportions are RECOMPUTED from the summed counts (exact
+            # pooling); posterior summaries and exceedance probabilities are
+            # combined as a DENOMINATOR-WEIGHTED average across the strata
+            # (weight = each stratum's current test volume), never an unweighted
+            # mean. The two risk-group strata usually have very different
+            # denominators, so a plain average would misstate the territory-level
+            # quantity. (A weighted average of the stratum exceedances is still an
+            # approximation of the pooled-posterior exceedance, but this is the
+            # explanatory model, not the primary classifier.)
+            grouped = df_stratified.groupby('territory_idx')
+            df_territory = grouped.agg({
                 'territory_name': 'first',
                 'all_tested_curr': 'sum',
                 'recent_count_curr': 'sum',
-                'recent_proportion_curr': 'mean',
-                'recent_proportion_hist': 'mean',
                 'all_tested_hist': 'sum',
                 'recent_count_hist': 'sum',
                 'predicted': 'sum',
                 'residual': 'sum',
-                'exceedance_prob': 'mean',
                 'count_lower': 'sum',
                 'count_upper': 'sum',
-                # SIR/SMR taxonomy inputs, aggregated to the territory level.
-                'smr_mean': 'mean', 'smr_median': 'mean', 'smr_lower': 'mean', 'smr_upper': 'mean',
-                'sir_mean': 'mean', 'sir_lower': 'mean', 'sir_upper': 'mean',
-                'exc_prob_smr': 'mean', 'exc_prob_sir': 'mean',
-                'exc_prob_smr_low': 'mean', 'exc_prob_sir_low': 'mean',
                 'national_rate_curr': 'first',
-                'baseline_rate_eb': 'mean',
             }).reset_index()
+
+            # Proportions recomputed from summed counts (exact pooling).
+            df_territory['recent_proportion_curr'] = (
+                df_territory['recent_count_curr']
+                / df_territory['all_tested_curr'].replace(0, np.nan)
+            ).fillna(0.0)
+            df_territory['recent_proportion_hist'] = (
+                df_territory['recent_count_hist']
+                / df_territory['all_tested_hist'].replace(0, np.nan)
+            ).fillna(0.0)
+
+            # Denominator-weighted averages for the posterior summaries and
+            # exceedance probabilities (weight = current test volume per stratum).
+            def _weighted_mean(sub: pd.DataFrame, col: str) -> float:
+                w = sub['all_tested_curr'].to_numpy(dtype=float)
+                v = sub[col].to_numpy(dtype=float)
+                mask = np.isfinite(v) & np.isfinite(w)
+                if not mask.any():
+                    return 0.0
+                if w[mask].sum() <= 0:
+                    return float(np.nanmean(v[mask]))
+                return float(np.average(v[mask], weights=w[mask]))
+
+            weighted_cols = [
+                'smr_mean', 'smr_median', 'smr_lower', 'smr_upper',
+                'sir_mean', 'sir_lower', 'sir_upper',
+                'exc_prob_smr', 'exc_prob_sir', 'exc_prob_smr_low', 'exc_prob_sir_low',
+                'exceedance_prob', 'baseline_rate_eb',
+            ]
+            for col in weighted_cols:
+                if col in df_stratified.columns:
+                    per_territory = {tid: _weighted_mean(sub, col) for tid, sub in grouped}
+                    df_territory[col] = df_territory['territory_idx'].map(per_territory)
 
             # Calculate z-scores at territory level using unified method
             df_territory['national_baseline'] = national_rate
@@ -628,11 +660,22 @@ class BayesianCovariatesAnalyzer(BaseHotspotAnalyzer):
             # Regardless of whether it's a real outbreak or testing artifact
             # Detailed component analysis helps USER make the decision
 
-            # Merge back to gdf_admin (including outbreak flags)
+            # Merge back to gdf_admin (including outbreak flags). The SMR/SIR
+            # taxonomy columns are merged too: the classification is derived from
+            # them, so reports and the watch-list rate axis need them present for
+            # transparency (previously only the derived label was merged back).
             for idx, row in df_territory.iterrows():
                 territory_idx = row['territory_idx']
                 for col in ['predicted', 'residual', 'national_baseline', 'deviation_pct',
                            'z_national', 'z_residual', 'combined_z', 'exceedance_prob', 'classification',
+                           'classification_smr_sir', 'is_new_site',
+                           # SIR/SMR taxonomy point summaries, intervals and the
+                           # exceedance probabilities behind the classification.
+                           'recent_proportion_curr', 'recent_proportion_hist',
+                           'smr_mean', 'smr_median', 'smr_lower', 'smr_upper',
+                           'sir_mean', 'sir_lower', 'sir_upper',
+                           'exc_prob_smr', 'exc_prob_sir', 'exc_prob_smr_low', 'exc_prob_sir_low',
+                           'national_rate_curr', 'baseline_rate_eb',
                            # Combined burden + rate watch-list (add_watchlist).
                            'on_watchlist', 'watch_reason', 'watch_rank',
                            'burden_rank', 'rate_rank', 'burden_share_pct',
@@ -702,38 +745,3 @@ class BayesianCovariatesAnalyzer(BaseHotspotAnalyzer):
     def _calculate_diagnostics(self, trace, df, level_name, national_rate) -> dict:
         """Thin wrapper around :func:`pipeline.diagnostics.calculate_covariates_diagnostics`."""
         return _calculate_covariates_diagnostics(trace, df, level_name, national_rate)
-
-    def run_hurdle_model(self, gdf_admin: gpd.GeoDataFrame, level_name: str,
-                         national_rate: float) -> Tuple[gpd.GeoDataFrame, dict]:
-        """
-        Run Hurdle Binomial model with covariates for sparse data.
-
-        Note: This is a simplified version that doesn't include risk_group covariate.
-        For full covariate support, use the standard run_model() method.
-
-        Args:
-            gdf_admin: GeoDataFrame with all territories
-            level_name: Administrative level name
-            national_rate: National recency rate
-
-        Returns:
-            Tuple of (updated GeoDataFrame, diagnostics dict)
-        """
-        logger.info(f"\n--- Hurdle Binomial Model (Covariates) for {level_name} ---")
-        logger.warning("[WARN] Hurdle model for BayesianCovariatesAnalyzer uses simplified version without risk_group")
-        logger.warning("[WARN] For full covariate support, use standard model with lower structural zero threshold")
-
-        # Delegate to BayesianAnalyzer's hurdle model
-        # Create temporary BayesianAnalyzer instance
-        temp_analyzer = BayesianAnalyzer(self.cfg, self.mode_suffix, self.orchestrator)
-
-        # Copy necessary attributes
-        temp_analyzer.gdf_cases = self.gdf_cases if hasattr(self, 'gdf_cases') else None
-
-        # Run hurdle model
-        gdf_result, diagnostics = temp_analyzer.run_hurdle_model(gdf_admin, level_name, national_rate)
-
-        if diagnostics:
-            diagnostics['model_name'] = 'Hurdle Binomial (Covariates - Simplified)'
-
-        return gdf_result, diagnostics

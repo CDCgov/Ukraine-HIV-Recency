@@ -708,26 +708,20 @@ class PipelineOrchestrator:
             iter_use_hurdle = self._original_cli_use_hurdle if hasattr(self, '_original_cli_use_hurdle') else self.use_hurdle
             iter_hurdle_threshold = self._original_cli_hurdle_threshold if hasattr(self, '_original_cli_hurdle_threshold') else self.hurdle_threshold
 
-            # Run Bayesian model (with Hurdle option)
-            if iter_use_hurdle and 'site_present' in gdf.columns:
-                n_total = len(gdf)
-                n_structural_zeros = (~gdf['site_present']).sum()
-                pct_structural = (n_structural_zeros / n_total) * 100
-
-                if pct_structural >= iter_hurdle_threshold:
-                    logger.info(f"Iteration {window['iteration']}: Using Truncated Binomial (active sites) ({pct_structural:.1f}% structural zeros)")
-                    gdf_result, diagnostics = bayesian.run_hurdle_model(gdf, level_name, national_rate)
+            # Run the Bayesian model. The legacy Truncated Binomial ("Hurdle")
+            # model is retired; the two-part zero-inflated Beta-Binomial model is
+            # its replacement, so a Hurdle request (or the two_part_model config)
+            # runs the two-part model, otherwise the standard hierarchical model.
+            if iter_use_hurdle or self.config.get('two_part_model', False):
+                if iter_use_hurdle and not self.config.get('two_part_model', False):
+                    logger.warning(f"Iteration {window['iteration']}: Hurdle model retired; using two-part model instead")
                 else:
-                    logger.info(f"Iteration {window['iteration']}: Using standard Bayesian ({pct_structural:.1f}% structural zeros)")
-                    gdf_result, diagnostics = bayesian.run_model(
-                        gdf, level_name, national_rate, national_se, parametrization='non_centered'
-                    )
+                    logger.info(f"Iteration {window['iteration']}: Using two-part zero-inflated Beta-Binomial model")
+                gdf_result, diagnostics = bayesian.run_two_part_model(
+                    gdf, level_name, national_rate, national_se, parametrization='non_centered'
+                )
             else:
-                if not iter_use_hurdle:
-                    logger.info(f"Iteration {window['iteration']}: Using standard Bayesian (Hurdle disabled)")
-                elif 'site_present' not in gdf.columns:
-                    logger.warning(f"Iteration {window['iteration']}: site_present missing - using standard Bayesian")
-
+                logger.info(f"Iteration {window['iteration']}: Using standard Bayesian model")
                 gdf_result, diagnostics = bayesian.run_model(
                     gdf, level_name, national_rate, national_se, parametrization='non_centered'
                 )
