@@ -422,11 +422,17 @@ class BaseHotspotAnalyzer:
                     f"FDR={bayesian_fdr:.1%}, {n_above} territories above threshold")
 
         # Each axis gets its own FDR-controlled cut-off so a call is made only
-        # when the posterior evidence is strong on that specific dimension.
-        cutoff_smr_high, _ = self._auto_threshold(df['exc_prob_smr'].dropna().values)
-        cutoff_sir_high, _ = self._auto_threshold(df['exc_prob_sir'].dropna().values)
-        cutoff_smr_low, _ = self._auto_threshold(df['exc_prob_smr_low'].dropna().values)
-        cutoff_sir_low, _ = self._auto_threshold(df['exc_prob_sir_low'].dropna().values)
+        # when the posterior evidence is strong on that specific dimension. The
+        # posterior-probability confidence level is configurable (detection.
+        # confidence_level, default 0.95): surveillance on sparse recency counts
+        # may declare 0.90 to trade a higher false-discovery share for the power
+        # to confirm signals that 0.95 cannot on a handful of events. It anchors
+        # both the start and the floor so the FDR search never drops below it.
+        _conf = float((self.cfg or {}).get('detection', {}).get('confidence_level', 0.95))
+        cutoff_smr_high, _ = self._auto_threshold(df['exc_prob_smr'].dropna().values, start=_conf, floor=_conf)
+        cutoff_sir_high, _ = self._auto_threshold(df['exc_prob_sir'].dropna().values, start=_conf, floor=_conf)
+        cutoff_smr_low, _ = self._auto_threshold(df['exc_prob_smr_low'].dropna().values, start=_conf, floor=_conf)
+        cutoff_sir_low, _ = self._auto_threshold(df['exc_prob_sir_low'].dropna().values, start=_conf, floor=_conf)
         df['classification_smr_sir'] = df.apply(
             lambda row: self.classify_with_smr_sir(
                 row,

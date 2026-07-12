@@ -58,6 +58,8 @@ def run_interactive_setup(config: Dict[str, Any]) -> str:
             'end': end.strftime('%Y-%m-%d')
         }
 
+        config.setdefault('detection', {})['confidence_level'] = InteractiveConfig.choose_confidence_level()
+
         logger.info(f"Iterative mode: data {start.strftime('%Y-%m-%d')} to {end.strftime('%Y-%m-%d')}")
         logger.info("  - Model: Bayesian non-centered only")
         logger.info(f"  - Levels: {levels}")
@@ -76,6 +78,8 @@ def run_interactive_setup(config: Dict[str, Any]) -> str:
         'start': start.strftime('%Y-%m-%d'),
         'end': end.strftime('%Y-%m-%d')
     }
+
+    config.setdefault('detection', {})['confidence_level'] = InteractiveConfig.choose_confidence_level()
 
     parametrization = InteractiveConfig.choose_parametrization()
     config['bayesian_parametrization'] = parametrization

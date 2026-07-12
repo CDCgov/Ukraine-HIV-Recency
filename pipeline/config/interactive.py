@@ -121,6 +121,30 @@ class InteractiveConfig:
             print("Invalid choice. Please enter 3, 6, 9 or 12.")
 
     @staticmethod
+    def choose_confidence_level() -> float:
+        """Prompt for the posterior-probability confidence level for hotspot calls.
+
+        A hotspot is called when the posterior probability that a cell exceeds
+        the national rate clears this level (FDR-controlled). 0.95 is the
+        conventional confirmatory bar; 0.90 is a more sensitive surveillance
+        bar, appropriate for sparse recency counts where a missed hotspot costs
+        more than a low-cost follow-up look. The presence gate (>=2 recent
+        events) holds either way, so 0.90 does not flag single-event cells.
+        """
+        print("\n" + "=" * 60)
+        print("CONFIDENCE LEVEL (hotspot calls)")
+        print("=" * 60)
+        print("90 - sensitive surveillance bar (recommended for sparse recency data)")
+        print("95 - conservative confirmatory bar")
+        while True:
+            choice = input("\nEnter your choice (90/95) [default: 90]: ").strip()
+            if choice in ('', '90'):
+                return 0.90
+            if choice == '95':
+                return 0.95
+            print("Invalid choice. Please enter 90 or 95.")
+
+    @staticmethod
     def choose_analysis_period() -> Tuple[pd.Timestamp, pd.Timestamp]:
         """Prompt for a single-mode analysis period (window <= 12 months).
 
