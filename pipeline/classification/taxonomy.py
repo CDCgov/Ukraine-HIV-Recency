@@ -56,19 +56,6 @@ MIN_HOTSPOT_CURRENT_EVENTS = 2
 ELEVATED_TREND_UNCERTAIN = "Elevated vs national (trend uncertain)"
 
 
-# Soft trend-lean thresholds (raw current-vs-history rate ratio) used to give a
-# DESCRIPTIVE trend sub-label to a hex that is already confirmed high vs national.
-# The trend axis is power-limited: with a handful of recent events per window the
-# posterior of the change is too wide to clear the FDR-controlled SIR exceedance,
-# so a genuinely rising or falling high-burden hex would otherwise always collapse
-# to "Stable high-burden". For an already-confirmed hotspot we therefore describe
-# the direction from the observed rate ratio (a lean, not an FDR discovery). The
-# strict exceedance still governs non-high hexes, so no trend is invented on a
-# territory that is not a hotspot.
-TREND_LEAN_HIGH = 1.3
-TREND_LEAN_LOW = 1.0 / 1.3
-
-
 # Full SIR/SMR label set with stable diagnostics keys.
 SMR_SIR_LABELS = (
     ('Established hotspot',        'established_hotspot'),
@@ -136,29 +123,13 @@ def classify_with_smr_sir(row: pd.Series,
     smr_state = 'high' if smr_high else ('low' if smr_low else 'norm')
     sir_state = 'high' if sir_high else ('low' if sir_low else 'norm')
 
-    # Soft trend descriptor. When a hex is confirmed high vs national (smr_state
-    # 'high') but the strict SIR exceedance did not fire (sir_state 'norm', the
-    # common case on sparse data), describe its trend from the OBSERVED
-    # current-vs-history rate ratio so Emerging / Stable / Declining are
-    # distinguishable. Only applied when the local history is informative enough
-    # to speak to a trend; otherwise the sir-informativeness gate below withholds
-    # the trend and reports "Elevated vs national (trend uncertain)".
-    if smr_state == 'high' and sir_state == 'norm':
-        _si = row.get('sir_informative', True)
-        _informative = True if (_si is None or pd.isna(_si)) else bool(_si)
-        if _informative:
-            try:
-                _cur = float(row.get('recent_count_curr')) / float(row.get('all_tested_curr'))
-                _his = float(row.get('recent_count_hist')) / float(row.get('all_tested_hist'))
-                if _his > 0:
-                    _ratio = _cur / _his
-                    if _ratio >= TREND_LEAN_HIGH:
-                        sir_state = 'high'
-                    elif _ratio <= TREND_LEAN_LOW:
-                        sir_state = 'low'
-            except (TypeError, ValueError, ZeroDivisionError):
-                pass
-
+    # The trend axis (rising / stable / falling) is read solely from the
+    # FDR-controlled change exceedance -- P(delta > 0) / P(delta < 0) under the
+    # joint two-period model. There is no raw-ratio "lean" fallback: an elevated
+    # hex whose change cannot be confirmed on the available events stays
+    # "Stable high-burden" rather than being assigned a direction on a point
+    # estimate. This keeps every axis on the same parity standard (compared to
+    # the reference, no multiplier) and invents no trend the data cannot support.
     label_map = {
         ('high', 'high'): "Established hotspot",
         ('high', 'norm'): "Emerging hotspot",

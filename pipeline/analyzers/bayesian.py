@@ -721,6 +721,7 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
                 p_samples_list, df, national_rate,
                 smr_threshold=float(_dt.get('smr_threshold', 2.0)),
                 sir_threshold=float(_dt.get('sir_threshold', 1.5)),
+                smr_low_threshold=float(_dt.get('smr_low_threshold', 0.5)),
                 leave_one_out=bool((self.cfg or {}).get('smr_leave_one_out', False)),
             )
             for _k in ('national_rate_curr', 'baseline_rate_eb', 'smr_mean', 'smr_median',

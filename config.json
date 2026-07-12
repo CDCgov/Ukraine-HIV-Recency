@@ -98,12 +98,20 @@
     "model_quality": 30
   },
   "detection": {
-    "smr_threshold": 2.0,
-    "sir_threshold": 1.5
+    "smr_threshold": 1.0,
+    "sir_threshold": 1.0,
+    "smr_low_threshold": 1.0,
+    "sir_low_threshold": 1.0,
+    "confidence_level": 0.90
   },
+  "smr_leave_one_out": true,
   "watchlist": {
     "burden_top_frac": 0.80,
     "rate_percentile": 0.80
   },
-  "two_part_model": true
+  "two_part_model": false,
+  "two_period_model": true,
+  "sampling": {
+    "cores": 1
+  }
 }
