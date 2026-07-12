@@ -562,6 +562,14 @@ class PipelineOrchestrator:
         self.run_timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
         logger.info(f"Starting analysis run: {self.run_timestamp}")
 
+        # Derive the period tag from the analysis window when the interactive
+        # setup did not set it (config-driven / non-interactive runs), so report
+        # filenames read Report_..._YYYYMM.xlsx rather than ..._None.xlsx.
+        if not self.period_str:
+            _ap = self.config.get('analysis_period', {})
+            if _ap.get('start'):
+                self.period_str = pd.to_datetime(_ap['start']).strftime('%Y%m')
+
         # Check if iterative mode
         analysis_type = self.config.get('analysis_type', 'standard')
 
@@ -663,8 +671,6 @@ class PipelineOrchestrator:
                     self._iterative_skipped_windows, iterative_dir, level_name=level_name)
             else:
                 logger.warning(f"No hotspots found in any iteration for {level_name}")
-        else:
-            logger.warning("No hotspots found in any iteration")
 
     def _run_bayesian_for_window(self, window: Dict) -> Optional[gpd.GeoDataFrame]:
         """
@@ -715,7 +721,12 @@ class PipelineOrchestrator:
             # model is retired; the two-part zero-inflated Beta-Binomial model is
             # its replacement, so a Hurdle request (or the two_part_model config)
             # runs the two-part model, otherwise the standard hierarchical model.
-            if iter_use_hurdle or self.config.get('two_part_model', False):
+            if self.config.get('two_period_model', False):
+                logger.info(f"Iteration {window['iteration']}: Using joint two-period Beta-Binomial model")
+                gdf_result, diagnostics = bayesian.run_two_period_model(
+                    gdf, level_name, national_rate, national_se, parametrization='non_centered'
+                )
+            elif iter_use_hurdle or self.config.get('two_part_model', False):
                 if iter_use_hurdle and not self.config.get('two_part_model', False):
                     logger.warning(f"Iteration {window['iteration']}: Hurdle model retired; using two-part model instead")
                 else:
