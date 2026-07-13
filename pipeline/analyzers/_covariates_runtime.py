@@ -207,6 +207,8 @@ def extract_covariates_posterior_summaries(cfg: Dict[str, Any],
         p_samples, df_stratified, national_rate,
         smr_threshold=float(_dt.get('smr_threshold', 2.0)),
         sir_threshold=float(_dt.get('sir_threshold', 1.5)),
+        smr_low_threshold=float(_dt.get('smr_low_threshold', 0.5)),
+        leave_one_out=bool((cfg or {}).get('smr_leave_one_out', False)),
     )
     df_stratified['national_rate_curr'] = _smr_sir['national_rate_curr']
     df_stratified['baseline_rate_eb'] = _smr_sir['baseline_rate_eb']
