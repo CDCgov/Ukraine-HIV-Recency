@@ -86,11 +86,11 @@ def run_interactive_setup(config: Dict[str, Any]) -> str:
 
     model_selection = InteractiveConfig.choose_model_selection()
     config['manual_model_selection'] = model_selection
-    if model_selection != 'auto':
-        _labels = {
-            'bayesian': 'Bayesian only',
-            'bayesian_covariates': 'Bayesian with Covariates only',
-        }
-        logger.info(f"[OK] Manual model selection: {_labels[model_selection]}")
+    _labels = {
+        'bayesian': 'Bayesian only',
+        'bayesian_covariates': 'Bayesian with Covariates only',
+        'both': 'Bayesian and Bayesian with Covariates',
+    }
+    logger.info(f"[OK] Model selection: {_labels.get(model_selection, model_selection)}")
 
     return start.strftime('%Y%m')
