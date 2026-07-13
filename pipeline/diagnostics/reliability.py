@@ -44,9 +44,11 @@ replaces the blend with:
       because the prior dominates locally).
 
 Component scores (``data_adequacy_score``, ``sample_size_score``,
-``model_quality_score``) are still computed and emitted so the reliability
-report can break the number down, but they no longer feed into the
-overall.
+``model_quality_score``) are still computed and emitted as informational
+diagnostics, but they do NOT combine into the reliability rating: the old
+40 / 30 / 30 weighted blend has been removed entirely, so there is no
+arbitrary component weighting to defend -- reliability is the posterior CV
+plus the convergence gate, nothing else.
 """
 
 from __future__ import annotations
@@ -233,51 +235,6 @@ class ReliabilityScoreCalculator:
             score, interpretation = 50, "Model quality unknown"
 
         return score, interpretation
-
-    @staticmethod
-    def calculate_overall_score(df: pd.DataFrame, diagnostics: Dict[str, Any],
-                                cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Aggregate report-level reliability summary.
-
-        Kept for the Excel / log summary blocks that emit a single number
-        per run. Per-territory scoring lives in
-        :meth:`calculate_territory_scores`.
-        """
-        data_score, data_interp = ReliabilityScoreCalculator.calculate_data_adequacy_score(df)
-        sample_score, sample_interp = ReliabilityScoreCalculator.calculate_sample_size_score(df)
-        model_score, model_interp = ReliabilityScoreCalculator.calculate_model_quality_score(diagnostics)
-
-        if cfg and 'reliability_weights' in cfg:
-            weights = cfg['reliability_weights']
-            w_data = weights.get('data_adequacy', 40) / 100.0
-            w_sample = weights.get('sample_size', 30) / 100.0
-            w_model = weights.get('model_quality', 30) / 100.0
-        else:
-            w_data, w_sample, w_model = 0.40, 0.30, 0.30
-
-        overall_score = w_data * data_score + w_sample * sample_score + w_model * model_score
-
-        if overall_score >= 80:
-            rating, flag = "HIGH", "[OK]"
-            recommendation = "Results are reliable for decision-making"
-        elif overall_score >= 60:
-            rating, flag = "MODERATE", "[WARN]"
-            recommendation = "Results are acceptable but interpret with caution"
-        else:
-            rating, flag = "LOW", "[WARN]"
-            recommendation = "Results have high uncertainty - use with caution"
-
-        return {
-            'overall_score': round(overall_score, 1),
-            'rating': rating,
-            'flag': flag,
-            'recommendation': recommendation,
-            'components': {
-                'data_adequacy': {'score': data_score, 'weight': int(w_data * 100), 'interpretation': data_interp},
-                'sample_size':   {'score': sample_score, 'weight': int(w_sample * 100), 'interpretation': sample_interp},
-                'model_quality': {'score': model_score, 'weight': int(w_model * 100), 'interpretation': model_interp},
-            },
-        }
 
     @staticmethod
     def calculate_territory_scores(df: pd.DataFrame, diagnostics: Dict[str, Any],

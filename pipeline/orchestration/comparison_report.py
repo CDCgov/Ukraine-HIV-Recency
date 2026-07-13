@@ -66,11 +66,6 @@ def _build_reliability_info(final_diag: Dict[str, Any],
             flag = "[FAIL]"
             recommendation = "Results have high uncertainty - use with caution"
 
-        weights = config.get('reliability_weights', {})
-        w_data = weights.get('data_adequacy', 40) / 100.0
-        w_sample = weights.get('sample_size', 30) / 100.0
-        w_model = weights.get('model_quality', 30) / 100.0
-
         data_mean = df_with_scores['data_adequacy_score'].mean() if 'data_adequacy_score' in df_with_scores.columns else 0
         sample_mean = df_with_scores['sample_size_score'].mean() if 'sample_size_score' in df_with_scores.columns else 0
         model_mean = df_with_scores['model_quality_score'].mean() if 'model_quality_score' in df_with_scores.columns else 0
@@ -87,22 +82,17 @@ def _build_reliability_info(final_diag: Dict[str, Any],
                 'MODERATE': int(mod_count),
                 'LOW': int(low_count),
             },
+            # Informational component means only. They do NOT combine into the
+            # reliability rating (no weighted blend): the rating comes solely
+            # from the per-territory posterior width (CV) and the convergence
+            # gate, so there is no arbitrary component weighting to defend.
             'components': {
-                'data_adequacy': {
-                    'score': round(data_mean, 1),
-                    'weight': int(w_data * 100),
-                    'interpretation': _score_interp(data_mean),
-                },
-                'sample_size': {
-                    'score': round(sample_mean, 1),
-                    'weight': int(w_sample * 100),
-                    'interpretation': _score_interp(sample_mean),
-                },
-                'model_quality': {
-                    'score': round(model_mean, 1),
-                    'weight': int(w_model * 100),
-                    'interpretation': _score_interp(model_mean),
-                },
+                'data_adequacy': {'score': round(data_mean, 1),
+                                  'interpretation': _score_interp(data_mean)},
+                'sample_size': {'score': round(sample_mean, 1),
+                                'interpretation': _score_interp(sample_mean)},
+                'model_quality': {'score': round(model_mean, 1),
+                                  'interpretation': _score_interp(model_mean)},
             },
         }
         logger.info(f"Reliability scores: mean={reliability_info['overall_score']:.1f}, "

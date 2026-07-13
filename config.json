@@ -92,11 +92,6 @@
     "use_pydantic": true,
     "strict_types": true
   },
-  "reliability_weights": {
-    "data_adequacy": 40,
-    "sample_size": 30,
-    "model_quality": 30
-  },
   "detection": {
     "smr_threshold": 1.0,
     "sir_threshold": 1.0,
