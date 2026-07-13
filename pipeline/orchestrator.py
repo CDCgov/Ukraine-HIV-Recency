@@ -459,7 +459,6 @@ class PipelineOrchestrator:
             # === Bayesian Analysis ===
             gdf_bayes, diag_bayes = _orch_run_bayesian_dispatch(
                 bayesian, gdf, level_name, national_rate, national_se,
-                level_use_hurdle, level_hurdle_threshold,
                 _force_bayes_cov_only, self.config,
             )
 
@@ -713,25 +712,11 @@ class PipelineOrchestrator:
             # Aggregate stats
             gdf = bayesian.aggregate_stats(gdf, gdf_cases, start, end, b_start, b_end)
 
-            # Use original CLI parameters for iterative mode
-            iter_use_hurdle = self._original_cli_use_hurdle if hasattr(self, '_original_cli_use_hurdle') else self.use_hurdle
-            iter_hurdle_threshold = self._original_cli_hurdle_threshold if hasattr(self, '_original_cli_hurdle_threshold') else self.hurdle_threshold
-
-            # Run the Bayesian model. The legacy Truncated Binomial ("Hurdle")
-            # model is retired; the two-part zero-inflated Beta-Binomial model is
-            # its replacement, so a Hurdle request (or the two_part_model config)
-            # runs the two-part model, otherwise the standard hierarchical model.
+            # Run the Bayesian model: the joint two-period detector when enabled,
+            # otherwise the standard hierarchical single-window model.
             if self.config.get('two_period_model', False):
                 logger.info(f"Iteration {window['iteration']}: Using joint two-period Beta-Binomial model")
                 gdf_result, diagnostics = bayesian.run_two_period_model(
-                    gdf, level_name, national_rate, national_se, parametrization='non_centered'
-                )
-            elif iter_use_hurdle or self.config.get('two_part_model', False):
-                if iter_use_hurdle and not self.config.get('two_part_model', False):
-                    logger.warning(f"Iteration {window['iteration']}: Hurdle model retired; using two-part model instead")
-                else:
-                    logger.info(f"Iteration {window['iteration']}: Using two-part zero-inflated Beta-Binomial model")
-                gdf_result, diagnostics = bayesian.run_two_part_model(
                     gdf, level_name, national_rate, national_se, parametrization='non_centered'
                 )
             else:
