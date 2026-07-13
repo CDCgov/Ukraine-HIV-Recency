@@ -77,21 +77,23 @@ class InteractiveConfig:
         print("\n" + "=" * 60)
         print("ANALYSIS LEVELS")
         print("=" * 60)
-        print("res3 - H3 hexagons (larger unit, more facilities per hexagon)")
-        print("adm1 - administrative oblasts (coarsest; most events per unit)")
-        print("Enter any combination, comma-separated. Examples:")
-        print("  res3            adm1            res3,adm1")
+        print("1 - res3       H3 hexagons (larger unit, more facilities per hexagon)")
+        print("2 - adm1       administrative oblasts (coarsest; most events per unit)")
+        print("3 - res3,adm1  both")
+        print("Enter an index (1/2/3), or the names comma-separated (e.g. res3,adm1).")
 
         mapping = {'res3': 3, 'adm1': 'Oblast'}
         order = ['res3', 'adm1']
+        index_map = {'1': ['res3'], '2': ['adm1'], '3': ['res3', 'adm1']}
         while True:
-            raw = input("\nLevels [default: res3,adm1]: ").strip().lower()
+            raw = input("\nLevels [default: 3 = res3,adm1]: ").strip().lower()
             if raw == '':
                 return [3, 'Oblast']
-            tokens = [t.strip() for t in raw.split(',') if t.strip()]
+            tokens = index_map[raw] if raw in index_map else \
+                [t.strip() for t in raw.split(',') if t.strip()]
             if tokens and all(t in mapping for t in tokens):
                 return [mapping[t] for t in order if t in tokens]
-            print("Invalid choice. Use res3, adm1 (comma-separated).")
+            print("Invalid choice. Enter 1, 2 or 3, or names like res3,adm1.")
 
     @staticmethod
     def choose_iterative_analysis_window() -> int:
