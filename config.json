@@ -102,7 +102,7 @@
     "sir_threshold": 1.0,
     "smr_low_threshold": 1.0,
     "sir_low_threshold": 1.0,
-    "confidence_level": 0.90
+    "confidence_level": 0.80
   },
   "smr_leave_one_out": true,
   "watchlist": {

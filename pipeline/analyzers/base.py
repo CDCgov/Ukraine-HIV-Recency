@@ -424,11 +424,14 @@ class BaseHotspotAnalyzer:
         # Each axis gets its own FDR-controlled cut-off so a call is made only
         # when the posterior evidence is strong on that specific dimension. The
         # posterior-probability confidence level is configurable (detection.
-        # confidence_level, default 0.95): surveillance on sparse recency counts
-        # may declare 0.90 to trade a higher false-discovery share for the power
-        # to confirm signals that 0.95 cannot on a handful of events. It anchors
-        # both the start and the floor so the FDR search never drops below it.
-        _conf = float((self.cfg or {}).get('detection', {}).get('confidence_level', 0.95))
+        # confidence_level). The default 0.80 is the Richardson et al. (2004)
+        # disease-mapping decision rule D(0.8, 1): flag an area when the posterior
+        # probability that its relative rate exceeds the reference is >= 0.80
+        # (Environ Health Perspect 112(9):1016-1025). A simulation on the real
+        # site volumes (validation/threshold_simulation.py) confirmed 0.80 as the
+        # sensitivity/false-positive knee on this sparse data. It anchors both the
+        # start and the floor so the FDR search never drops below it.
+        _conf = float((self.cfg or {}).get('detection', {}).get('confidence_level', 0.80))
         cutoff_smr_high, _ = self._auto_threshold(df['exc_prob_smr'].dropna().values, start=_conf, floor=_conf)
         cutoff_sir_high, _ = self._auto_threshold(df['exc_prob_sir'].dropna().values, start=_conf, floor=_conf)
         cutoff_smr_low, _ = self._auto_threshold(df['exc_prob_smr_low'].dropna().values, start=_conf, floor=_conf)

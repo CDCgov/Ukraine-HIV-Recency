@@ -125,24 +125,26 @@ class InteractiveConfig:
         """Prompt for the posterior-probability confidence level for hotspot calls.
 
         A hotspot is called when the posterior probability that a cell exceeds
-        the national rate clears this level (FDR-controlled). 0.95 is the
-        conventional confirmatory bar; 0.90 is a more sensitive surveillance
-        bar, appropriate for sparse recency counts where a missed hotspot costs
-        more than a low-cost follow-up look. The presence gate (>=2 recent
-        events) holds either way, so 0.90 does not flag single-event cells.
+        the national rate clears this level (FDR-controlled). The default 0.80 is
+        the Richardson et al. (2004) disease-mapping decision rule D(0.8, 1) and
+        was confirmed as the sensitivity/false-positive knee by a simulation on
+        the real site volumes. 0.85-0.95 are progressively more conservative
+        (fewer false alerts, lower sensitivity on sparse counts). The presence
+        gate (>=2 recent events) holds at every level, so no single-event cell is
+        ever flagged.
         """
         print("\n" + "=" * 60)
         print("CONFIDENCE LEVEL (hotspot calls)")
         print("=" * 60)
-        print("90 - sensitive surveillance bar (recommended for sparse recency data)")
-        print("95 - conservative confirmatory bar")
+        print("80 - Richardson D(0.8,1) rule; simulation-calibrated (recommended)")
+        print("85 - near-zero false alerts, slightly lower sensitivity")
+        print("90 / 95 - conservative confirmatory bars")
         while True:
-            choice = input("\nEnter your choice (90/95) [default: 90]: ").strip()
-            if choice in ('', '90'):
-                return 0.90
-            if choice == '95':
-                return 0.95
-            print("Invalid choice. Please enter 90 or 95.")
+            choice = input("\nEnter your choice (80/85/90/95) [default: 80]: ").strip()
+            mapping = {'': 0.80, '80': 0.80, '85': 0.85, '90': 0.90, '95': 0.95}
+            if choice in mapping:
+                return mapping[choice]
+            print("Invalid choice. Please enter 80, 85, 90 or 95.")
 
     @staticmethod
     def choose_analysis_period() -> Tuple[pd.Timestamp, pd.Timestamp]:
