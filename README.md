@@ -278,8 +278,9 @@ output/<timestamp>/
 ```
 
 The per-unit `Report_*.xlsx` carries, alongside the counts and the
-classification: the posterior SMR **mean and median** with its 95% credible
-interval, the reliability score/category, and the watch-list columns
+classification: the posterior **National reference ratio** (internal `smr_*`)
+mean and median with its 95% credible interval, the reliability score/category,
+and the watch-list columns
 (`on_watchlist`, `watch_reason`, `watch_rank`, `burden_rank`, `rate_rank`,
 `burden_share_pct`). The oblast level writes the same files under
 `bayesian/admin/Oblast/`.
@@ -293,7 +294,8 @@ converge) are written under `iterative/`.
 
 ## Classification
 
-The SIR × SMR cross yields seven labels:
+The trend × level cross (each axis tested at parity against its FDR-controlled
+cut-off) yields seven labels:
 
 | Label | Meaning |
 |-------|---------|
@@ -305,7 +307,7 @@ The SIR × SMR cross yields seven labels:
 | ⚪ **Normal** | No signal on either axis. |
 
 New hexagons (no historical data) are marked with a `○` symbol on the map
-and classified on SMR only — the trend axis is undefined for them.
+and classified on the level axis only — the trend axis is undefined for them.
 
 ### Watch-list (burden + rate triage)
 
@@ -318,9 +320,9 @@ change the classification above) that surfaces both:
 - **Burden** — recent-case count as a share of the level-wide total;
   `burden_high` marks the units carrying the top `burden_top_frac` (default
   80%) of the recent caseload.
-- **Rate (relative)** — `rate_high` marks units whose posterior SMR sits in
-  the top `1 - rate_percentile` (default top 20%) of the active distribution,
-  or that are already an FDR-flagged hotspot.
+- **Rate (relative)** — `rate_high` marks units whose posterior relative rate
+  (National reference ratio) sits in the top `1 - rate_percentile` (default top
+  20%) of the active distribution, or that are already an FDR-flagged hotspot.
 
 A unit is on the list (`on_watchlist`) if it is notable on **either** axis,
 recorded in `watch_reason` as `burden` / `rate` / `both`; `watch_rank` orders
@@ -370,9 +372,12 @@ Core principles as implemented in this codebase:
   newly-diagnosed who were recency-tested** (RITA: rapid recency assay +
   viral load, with ART-experienced / previously-known positives excluded).
   It is a proportion, not an incidence estimate.
-- Each unit is compared to the national baseline along two independent
-  axes (SMR vs current national, SIR vs own EB-shrunken history), each
-  FDR-controlled.
+- Each unit is measured on two independent axes, each FDR-controlled at
+  **parity** (ratio > 1, no multiplier): a **level** axis versus the current
+  national rate (computed leave-one-out) and a **trend** axis read from the
+  joint two-period per-unit change `delta`. These are the *National reference
+  ratio* and *Historical trend ratio* in the reports (internal `smr_*` / `sir_*`).
+  The calling confidence defaults to 0.80 (Richardson et al. 2004 D(0.8,1)).
 - The hierarchical model is **exchangeable** (no spatial structure), which
   is the appropriate choice for facility-based surveillance where adjacent
   units need not be epidemiologically similar.
@@ -386,7 +391,7 @@ Core principles as implemented in this codebase:
 - **Case-mix over time.** The composition of who is recency-tested has
   shifted across the programme (declining share of key populations). Because
   risk groups differ in their recent-infection share, this can confound
-  comparisons of a place against its own past (the SIR axis). A
+  comparisons of a place against its own past (the trend axis). A
   decomposition of the observed national decline attributes only a small
   part (~5–18%) to this composition shift and the large majority to a
   genuine within-group decline — but local comparisons should still be read
@@ -394,7 +399,7 @@ Core principles as implemented in this codebase:
 - **Assay change.** Recent-fraction levels are **not comparable across a
   change of recency assay** (e.g. Asante → LAg): different assays imply a
   different mean duration of recent infection. Treat a post-switch period as
-  a fresh baseline; do not compare SIR across the switch.
+  a fresh baseline; do not compare the trend axis across the switch.
 
 ---
 
