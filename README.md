@@ -180,7 +180,7 @@ fully-specified config.
 |------|--------|
 | `--test` | Run on the built-in `DEFAULT_CONFIG` (a config file is optional); no wizard. |
 | `--use-loo-ic` | Use LOO-IC for model selection instead of the heuristic score. |
-| `--use-hurdle` | Enable the Truncated-Binomial branch for sparse data. |
+| `--use-hurdle` | Legacy flag. The Truncated-Binomial ("Hurdle") model is retired, so this now falls back to the standard hierarchical model. |
 | `--hurdle-threshold N` | Structural-zero percentage that triggers the hurdle suggestion (default 70). |
 | `--log-level {DEBUG,INFO,WARNING,ERROR}` | Console / file log verbosity (default INFO). |
 | `--no-log-stdout` / `--no-log-file` | Disable console or file logging. |
@@ -239,7 +239,7 @@ wizard, not stored in the config. Key fields:
 - **`watchlist`** — triage knobs for the burden + rate watch-list (see
   *Watch-list*). `burden_top_frac` (default 0.80) sets the cumulative share of
   the recent caseload counted as "high burden"; `rate_percentile` (default
-  0.80) sets the relative-rate cut (top 20% of the posterior SMR). These do
+  0.80) sets the relative-rate cut (top 20% of the posterior relative rate). These do
   **not** affect the rigorous `classification`.
 - **`bayesian.resolution_sigma_multiplier`** (optional) — a map from level
   name (e.g. `"Hex_Res4"` or `"Oblast"`) to a multiplier on the prior width;
