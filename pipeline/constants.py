@@ -262,13 +262,6 @@ ANALYSIS_CONSTANTS = {
         'adjustable': True,
         'note': 'Above this — use 4 cores'
     },
-    'hurdle_threshold': {
-        'value': 70.0,
-        'source': 'Empirical — if >70% territories have zero events, hurdle model recommended',
-        'adjustable': True,
-        'note': 'Percentage of zero-event territories to trigger hurdle model suggestion'
-    },
-
     # --- Prior Specification (logit-scale) ---
     'prior_mu_logit_clip_min': {
         'value': 0.001,
@@ -429,11 +422,6 @@ DEFAULT_CONFIG = {
 }
 
 
-# Default share of structural zeros above which the wizard recommends the
-# truncated-Binomial (a.k.a. "hurdle") branch. Defined once so the same
-# threshold appears in the rule, in the audit-trail message and in any
-# downstream report.
-DEFAULT_TRUNCATED_BINOMIAL_STRUCTURAL_ZEROS_PCT = 70.0
 
 
 # =============================================================================

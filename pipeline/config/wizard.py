@@ -7,11 +7,6 @@ two questions (data-source type, analysis mode) and shows the proposed
 configuration before sampling starts; without a TTY (or if anything in
 the interactive path raises) it falls back to a deterministic automatic
 configuration so headless / CI runs do not stall.
-
-The Truncated-Binomial threshold lives in
-:data:`pipeline.constants.DEFAULT_TRUNCATED_BINOMIAL_STRUCTURAL_ZEROS_PCT`
-so the rule here, the audit-trail message and the report agree on the
-same number.
 """
 
 from __future__ import annotations
@@ -19,8 +14,6 @@ from __future__ import annotations
 import logging
 import sys
 from typing import Any, Dict, Optional
-
-from pipeline.constants import DEFAULT_TRUNCATED_BINOMIAL_STRUCTURAL_ZEROS_PCT
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +37,6 @@ class ModelConfigurationWizard:
 
         Returns:
             Dict with configuration: {
-                'use_hurdle': bool,
-                'hurdle_threshold': float,
                 'use_loo_ic': bool
             }
         """
@@ -53,8 +44,6 @@ class ModelConfigurationWizard:
         if cli_args:
             logger.info("Using CLI-provided configuration, skipping wizard")
             return {
-                'use_hurdle': cli_args.get('use_hurdle', False),
-                'hurdle_threshold': cli_args.get('hurdle_threshold', 70.0),
                 'use_loo_ic': cli_args.get('use_loo_ic', False)
             }
 
@@ -114,7 +103,6 @@ class ModelConfigurationWizard:
                 n_active_sites, pct_structural_zeros, config
             )
             logger.info(f"  - spatial_structure: exchangeable")
-            logger.info(f"  - use_hurdle: {result_config['use_hurdle']}")
             logger.info(f"  - use_loo_ic: {result_config['use_loo_ic']}")
             return result_config
         except Exception as e:
@@ -151,13 +139,6 @@ class ModelConfigurationWizard:
         # Exchangeable model (facility-based data)
         config['spatial_structure'] = 'exchangeable'
 
-        # Truncated-Binomial recommendation (automatic, based on structural
-        # zeros). The single threshold constant is at module scope so the
-        # rule here, the audit-trail message and the report all agree.
-        threshold = DEFAULT_TRUNCATED_BINOMIAL_STRUCTURAL_ZEROS_PCT
-        config['use_hurdle'] = pct_structural_zeros >= threshold
-        config['hurdle_threshold'] = threshold
-
         # LOO-IC
         if analysis_mode == 'b':
             # Research mode → use LOO-IC
@@ -178,15 +159,6 @@ class ModelConfigurationWizard:
         # Spatial structure
         print(f"\n[OK] Spatial structure: EXCHANGEABLE (facility-based data)")
 
-        # Truncated Binomial (active sites only) -- historical CLI flag
-        # ``--use-hurdle`` is preserved for backwards compatibility.
-        if config['use_hurdle']:
-            print(f"\n[OK] Truncated Binomial (active sites): ENABLED")
-            print(f"   (Automatic: {pct_structural_zeros:.1f}% territories without sites)")
-        else:
-            print(f"\n[OK] Truncated Binomial (active sites): DISABLED")
-            print(f"   ({pct_structural_zeros:.1f}% structural zeros < 70% threshold)")
-
         # LOO-IC
         if config['use_loo_ic']:
             print(f"\n[OK] Model selection: RESEARCH MODE (LOO-IC comparison)")
@@ -205,14 +177,11 @@ class ModelConfigurationWizard:
         Exchangeable model — correct for facility-based surveillance.
         """
         result = {
-            'use_hurdle': pct_structural_zeros >= 70.0,
-            'hurdle_threshold': 70.0,
             'use_loo_ic': False  # Fast mode by default
         }
 
         logger.info(f"Automatic configuration:")
         logger.info(f"  - spatial_structure=exchangeable")
-        logger.info(f"  - use_hurdle={result['use_hurdle']}")
         logger.info(f"  - use_loo_ic={result['use_loo_ic']}")
 
         return result

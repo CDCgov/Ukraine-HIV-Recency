@@ -53,12 +53,10 @@ def run_wizard_and_record_decisions(audit_trail: Any,
     )
 
     # Use local variables for this level (don't overwrite self attributes)
-    level_use_hurdle = wizard_config['use_hurdle']
-    level_hurdle_threshold = wizard_config['hurdle_threshold']
     level_use_loo_ic = wizard_config['use_loo_ic']
 
     logger.info(f"Configuration: spatial_structure=exchangeable, "
-               f"use_hurdle={level_use_hurdle}, use_loo_ic={level_use_loo_ic}")
+               f"use_loo_ic={level_use_loo_ic}")
 
     # End Data Quality Assessment stage
     audit_trail.end_stage()
@@ -70,17 +68,6 @@ def run_wizard_and_record_decisions(audit_trail: Any,
     )
 
     # Record wizard configuration decisions
-    audit_trail.add_decision(
-        test_name="Hurdle Model Configuration",
-        test_type="threshold",
-        result=f"Use Hurdle: {level_use_hurdle}, Threshold: {level_hurdle_threshold}%",
-        decision="Use Hurdle model" if level_use_hurdle else "Use standard model",
-        reason=f"Structural zeros: {pct_structural_zeros:.1f}%. Threshold: {level_hurdle_threshold}%. " +
-               ("Exceeds threshold - Hurdle model appropriate" if level_use_hurdle else "Below threshold - standard model adequate"),
-        impact="Hurdle model explicitly models site presence/absence" if level_use_hurdle else "Standard model assumes all sites potentially active",
-        details={'use_hurdle': level_use_hurdle, 'threshold': level_hurdle_threshold, 'pct_zeros': pct_structural_zeros}
-    )
-
     audit_trail.add_decision(
         test_name="Spatial Structure Configuration",
         test_type="diagnostic",
@@ -102,8 +89,6 @@ def run_wizard_and_record_decisions(audit_trail: Any,
     )
 
     return {
-        'use_hurdle': level_use_hurdle,
-        'hurdle_threshold': level_hurdle_threshold,
         'use_loo_ic': level_use_loo_ic,
         'pct_structural_zeros': pct_structural_zeros,
     }

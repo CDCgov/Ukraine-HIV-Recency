@@ -154,8 +154,7 @@ class PipelineOrchestrator:
     """Orchestrates the complete analysis pipeline."""
 
     def __init__(self, config_path: Optional[str] = None, run_timestamp: Optional[str] = None,
-                 output_base: Optional[Path] = None, use_loo_ic: bool = False,
-                 use_hurdle: bool = False, hurdle_threshold: float = 70.0):
+                 output_base: Optional[Path] = None, use_loo_ic: bool = False):
         """Build the orchestrator and fix the output-directory layout.
 
         Args:
@@ -166,8 +165,6 @@ class PipelineOrchestrator:
                 is used verbatim (``main()`` already created it), otherwise the
                 path is derived from ``config['output_dir']`` on first write.
             use_loo_ic: select models via LOO-IC instead of the heuristic score.
-            use_hurdle: enable the Truncated-Binomial branch for sparse data.
-            hurdle_threshold: structural-zero percentage that triggers it.
         """
         self.config = self._load_config(config_path)
         self.bayesian = None
@@ -177,8 +174,6 @@ class PipelineOrchestrator:
         self.run_timestamp = run_timestamp  # Set from main() for consistent timestamping
         self.model_comparison_data = []  # Store model comparison data
         self.use_loo_ic = use_loo_ic  # Use LOO-IC for model selection
-        self.use_hurdle = use_hurdle  # Use Hurdle model for sparse data
-        self.hurdle_threshold = hurdle_threshold  # Threshold for structural zeros %
 
         # Decision Audit Trail - will be initialized per level
         self.audit_trails = {}  # Dictionary to store audit trail for each level
@@ -422,22 +417,16 @@ class PipelineOrchestrator:
             _orch_assess_data_quality(audit_trail, gdf)
 
             # Cache original CLI args on first level; reuse on subsequent levels
-            if not hasattr(self, '_original_cli_use_hurdle'):
-                self._original_cli_use_hurdle = self.use_hurdle
-                self._original_cli_hurdle_threshold = self.hurdle_threshold
+            if not hasattr(self, '_original_cli_use_loo_ic'):
                 self._original_cli_use_loo_ic = self.use_loo_ic
 
             cli_args = {
-                'use_hurdle': self._original_cli_use_hurdle,
-                'hurdle_threshold': self._original_cli_hurdle_threshold,
                 'use_loo_ic': self._original_cli_use_loo_ic
             }
 
             _wiz = _orch_run_wizard_and_record_decisions(
                 audit_trail, gdf, level_name, cli_args, self.config
             )
-            level_use_hurdle = _wiz['use_hurdle']
-            level_hurdle_threshold = _wiz['hurdle_threshold']
             level_use_loo_ic = _wiz['use_loo_ic']
             pct_structural_zeros = _wiz['pct_structural_zeros']
 
