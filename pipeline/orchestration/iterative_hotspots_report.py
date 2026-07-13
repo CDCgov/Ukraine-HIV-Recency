@@ -119,7 +119,7 @@ def generate_iterative_hotspots_report(all_hotspots: List[gpd.GeoDataFrame],
         logger.warning("latitude/longitude columns not found - case dates will not be populated")
 
     # Load the hexagons at the iterative resolution to get community names
-    iter_res = int(config.get('iterative_resolution', 4))
+    iter_res = int(config.get('iterative_resolution', 3))
     hex_path = Path(config['h3_hexagons'][f'res{iter_res}_path'])
     gdf_hex = gpd.read_file(hex_path)
 

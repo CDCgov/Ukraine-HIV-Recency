@@ -10,19 +10,8 @@
     "oblast_col": "ADM1_EN"
   },
   "h3_hexagons": {
-    "adm3_path": null,
-    "adm2_path": "data/h3_hexagons_res4.geojson",
-    "adm1_path": null,
-    "otg_col": "h3_id",
-    "rayon_col": "h3_id",
-    "oblast_col": "h3_id",
-    "h3_id_col": "h3_id",
-    "res5_path": null,
-    "res4_path": "data/h3_hexagons_res4.geojson",
     "res3_path": "data/h3_hexagons_res3.geojson",
-    "resolution_level3": 5,
-    "resolution_level2": 4,
-    "resolution_level1": 3
+    "h3_id_col": "h3_id"
   },
   "output_dir": "output",
   "target_crs": "EPSG:3857",
@@ -104,9 +93,5 @@
     "burden_top_frac": 0.80,
     "rate_percentile": 0.80
   },
-  "two_part_model": false,
-  "two_period_model": true,
-  "sampling": {
-    "cores": 1
-  }
+  "two_period_model": true
 }

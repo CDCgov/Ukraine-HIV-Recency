@@ -407,7 +407,6 @@ DEFAULT_CONFIG = {
         "confidence_level": 0.80
     },
     "smr_leave_one_out": True,
-    "two_part_model": False,
     "two_period_model": True,
     # Combined burden + rate watch-list (pipeline.classification.add_watchlist).
     # Triage knobs, NOT significance thresholds: the rigorous FDR hotspot call
@@ -418,10 +417,6 @@ DEFAULT_CONFIG = {
     },
     "h3_hexagons": {
         "res3_path": "data/h3_hexagons_res3.geojson",
-        "res4_path": "data/h3_hexagons_res4.geojson",
-        # Finer hexagons (resolution 5) -- populate when the layer is added
-        # for the hepatitis / STI / TB rollouts.
-        "res5_path": None,
         "h3_id_col": "h3_id"
     }
 }

@@ -42,7 +42,7 @@ def run_first_window_calibration(config: Dict[str, Any],
             'end': first_window['analysis_end'].strftime('%Y-%m-%d')
         }
 
-        iter_lvl = config.get('iterative_resolution', 4)
+        iter_lvl = config.get('iterative_resolution', 3)
         level_name = f'Hex_Res{iter_lvl}' if isinstance(iter_lvl, int) else str(iter_lvl)
         bayesian_cal = analyzer_cls(config, 'hex', orchestrator=orchestrator)
         gdf_cases_cal = bayesian_cal.load_cases()

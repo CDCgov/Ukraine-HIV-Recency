@@ -176,7 +176,7 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
                 progress_callback = SamplingProgressBar.create_progress_callback()
 
                 # Sample from posterior with adaptive target_accept
-                # ETA estimation for large grids (H3 res5)
+                # ETA estimation for large grids
                 n_territories = len(df)
                 if n_territories > 1000:
                     # Rough estimate: ~0.5-1.5 sec per territory for tune+draw

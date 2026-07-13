@@ -251,7 +251,7 @@ class BayesianCovariatesAnalyzer(BaseHotspotAnalyzer):
                                       n=n, observed=y)
 
                 # Sample with adaptive target_accept
-                # ETA estimation for large grids (H3 res5)
+                # ETA estimation for large grids
                 n_territories = len(df_stratified)
                 draws = 1000
                 tune = 2000

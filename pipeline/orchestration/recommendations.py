@@ -380,7 +380,7 @@ def generate_recommendations(cfg, output_dir, recommendations_path, is_hotspot_f
         recommendations.append("=" * 80)
         recommendations.append("")
 
-        hex_order = ['Hex_Res3', 'Hex_Res4']
+        hex_order = ['Hex_Res3']
         hex_quality = {}
 
         for level in hex_order:
@@ -435,19 +435,9 @@ def generate_recommendations(cfg, output_dir, recommendations_path, is_hotspot_f
                 recommendations.append(f"→ USE {best_level.upper()} WITH CAUTION")
                 recommendations.append(f"  Reason: Acceptable fit, but verify clusters manually")
             else:
-                # All resolutions poor - recommend coarser resolution
-                if best_level == 'Hex_Res4':
-                    recommendations.append(f"→ RES4 FAILED - TRY RES3 (COARSER)")
-                    recommendations.append(f"  Reason: Insufficient data at this resolution")
-                else:
-                    recommendations.append(f"→ ALL RESOLUTIONS SHOW POOR FIT")
-                    recommendations.append(f"  Reason: Consider using administrative units instead")
-
-            # Specific recommendations for failed resolutions
-            for level in hex_order:
-                if level in hex_quality and hex_quality[level] < 2:
-                    if level == 'Hex_Res4' and 'Hex_Res3' in hex_quality:
-                        recommendations.append(f"  [WARN]  Res4 unreliable → Use Res3 instead")
+                # Poor fit at res3 - suggest administrative units instead
+                recommendations.append(f"→ POOR FIT AT RES3")
+                recommendations.append(f"  Reason: Consider using administrative units instead")
 
         recommendations.append("")
 

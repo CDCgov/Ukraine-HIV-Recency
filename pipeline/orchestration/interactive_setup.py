@@ -40,7 +40,7 @@ def run_interactive_setup(config: Dict[str, Any]) -> str:
     config['analysis_type'] = analysis_type
 
     if analysis_type == 'iterative':
-        # Iterative mode: one or more levels (res3/res4/adm1), each swept
+        # Iterative mode: one or more levels (res3/adm1), each swept
         # separately, plus the analysis-window length (baseline derived).
         levels = InteractiveConfig.choose_levels()
         iter_am = InteractiveConfig.choose_iterative_analysis_window()
@@ -66,7 +66,7 @@ def run_interactive_setup(config: Dict[str, Any]) -> str:
         logger.info(f"  - Window: {iter_am}-month analysis (baseline derived), 1-month step")
         return 'iterative'
 
-    # Standard (single-window) mode: choose one or more levels (res3/res4/adm1).
+    # Standard (single-window) mode: choose one or more levels (res3/adm1).
     levels = InteractiveConfig.choose_levels()
     config['analysis_levels'] = levels
     config['hex_resolutions'] = [lv for lv in levels if isinstance(lv, int)]

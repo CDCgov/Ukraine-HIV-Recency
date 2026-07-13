@@ -86,7 +86,6 @@ class BaseHotspotAnalyzer:
         'District': 'District',
         'Oblast': 'Oblast',
         3: 'Hex_Res3',
-        4: 'Hex_Res4'
     }
 
     # Subclasses set this so get_output_path() can route to the right

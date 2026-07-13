@@ -195,7 +195,7 @@ class PipelineOrchestrator:
 
         Args:
             model_type: "bayesian", "bayesian_covariates", or "summary"
-            level_name: "Community", "District", "Oblast", "Hex_Res3", "Hex_Res4", "Hex_Res5"
+            level_name: "Community", "District", "Oblast", "Hex_Res3"
             filename: File name (e.g., "Map_Community_202601.png")
             is_hex: True if this is hexagonal grid
 
@@ -219,7 +219,7 @@ class PipelineOrchestrator:
             # Model files
             territory_type = "hex" if is_hex else "admin"
 
-            # For hex: level_name = "Hex_Res4" -> "res4"
+            # For hex: level_name = "Hex_Res3" -> "res3"
             # For admin: level_name = "Community" -> "Community"
             if is_hex:
                 level_dir = level_name.replace("Hex_Res", "res").lower()
@@ -605,7 +605,7 @@ class PipelineOrchestrator:
         - Baseline period: 12 months
         - Step: 1 month backward
         - Model: Bayesian non-centered only
-        - Level: Res4 hexagons only
+        - Level: Res3 hexagons only
         """
         logger.info("\n" + "=" * 60)
         logger.info("ITERATIVE HOTSPOT SEARCH")
@@ -625,7 +625,7 @@ class PipelineOrchestrator:
         # Run the full sliding-window sweep once per selected level (each level
         # — an H3 resolution int or 'Oblast' — is independent and gets its own
         # calibration, per-window maps and aggregated report).
-        levels = self.config.get('iterative_levels') or [self.config.get('iterative_resolution', 4)]
+        levels = self.config.get('iterative_levels') or [self.config.get('iterative_resolution', 3)]
 
         for lvl in levels:
             self.config['iterative_resolution'] = lvl
@@ -693,8 +693,8 @@ class PipelineOrchestrator:
             national_rate, national_se = bayesian.calculate_national_baseline(gdf_cases, b_start, b_end)
 
             # Load geometry at the configured iterative level: an H3 resolution
-            # int (res3 / res4) or the string 'Oblast' (ADM1).
-            lvl = self.config.get('iterative_resolution', 4)
+            # int (res3) or the string 'Oblast' (ADM1).
+            lvl = self.config.get('iterative_resolution', 3)
             level_name = f'Hex_Res{lvl}' if isinstance(lvl, int) else str(lvl)
             gdf = bayesian.load_geodata(lvl)
 
