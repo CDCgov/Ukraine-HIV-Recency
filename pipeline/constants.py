@@ -386,7 +386,7 @@ DEFAULT_CONFIG = {
     },
     "analysis_mode": "h3_hexagons",
     "admin_levels": [],
-    "hex_resolutions": [4],
+    "hex_resolutions": [3],
     "administrative_units": {
         "adm3_path": "data/Ukraine_Adm3_OTG.geojson",
         "adm2_path": "data/Ukraine_Adm2_Rayon.geojson",
@@ -395,15 +395,20 @@ DEFAULT_CONFIG = {
         "rayon_col": "ADM2_EN",
         "oblast_col": "ADM1_EN"
     },
-    # Epidemiological cut-offs for the SMR/SIR exceedance taxonomy. SMR is
-    # "current rate vs national" and SIR is "current vs trend-adjusted own
-    # history"; a territory is flagged on an axis when P(ratio > threshold)
-    # clears the FDR cut-off. RR >= 2 ("doubling") and 1.5 are the conventional
-    # elevated / moderately-elevated levels; expose them so they can be tuned.
+    # Level/trend exceedance taxonomy. Both axes are tested at PARITY (ratio > 1,
+    # no multiplier): a cell is flagged when it is credibly above the reference.
+    # confidence_level 0.80 is the Richardson et al. (2004) D(0.8,1) rule,
+    # simulation-calibrated. Keep this block in sync with config.json.
     "detection": {
-        "smr_threshold": 2.0,
-        "sir_threshold": 1.5
+        "smr_threshold": 1.0,
+        "sir_threshold": 1.0,
+        "smr_low_threshold": 1.0,
+        "sir_low_threshold": 1.0,
+        "confidence_level": 0.80
     },
+    "smr_leave_one_out": True,
+    "two_part_model": False,
+    "two_period_model": True,
     # Combined burden + rate watch-list (pipeline.classification.add_watchlist).
     # Triage knobs, NOT significance thresholds: the rigorous FDR hotspot call
     # in `classification` is unaffected.
