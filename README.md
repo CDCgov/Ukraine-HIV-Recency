@@ -43,17 +43,25 @@ For each **unit** (H3 hexagon or oblast) the pipeline estimates the
 proportion of recent infections among newly-diagnosed and compares it against
 the national picture along two axes:
 
-- **SMR** (Standardised Morbidity Ratio) — the unit's current
-  proportion versus the **current** national rate. Answers *"is the
-  recency proportion here higher than the country right now?"*
-- **SIR** (Standardised Incidence Ratio) — the unit's current
-  proportion versus its **own Empirical-Bayes-shrunken history**, adjusted
-  for the national trend. Answers *"is this area rising relative to where
-  it used to be?"*
+- **Level (vs the country)** — the unit's current recency proportion versus the
+  **current national rate**, computed leave-one-out so a unit that carries much
+  of the national caseload cannot partly mask itself. Answers *"is the recency
+  proportion here credibly higher than the country right now?"* The test is at
+  **parity** (ratio > 1, no arbitrary multiplier). Labelled *National reference
+  ratio* in the reports; internal column names remain `smr_*`.
+- **Trend (vs its own past)** — the current-vs-history change read directly from
+  a **joint two-period model** (a hierarchical per-unit change `delta`). Answers
+  *"is this area credibly rising relative to where it used to be?"*, again at
+  parity (`P(delta > 0)`). Labelled *Historical trend ratio*; internal names
+  remain `sir_*`.
 
-Both axes are evaluated against FDR-controlled exceedance probabilities and
-crossed into a seven-category taxonomy that separates a fresh rise from a
-sustained high level from a wind-down (see *Classification* below).
+Both axes are FDR-controlled, and the calling confidence is a run parameter:
+the default **0.80** is the Richardson et al. (2004) disease-mapping decision
+rule D(0.8,1), confirmed as the sensitivity/false-positive knee by a simulation
+on the site volumes (`validation/threshold_simulation.py`). A unit needs at
+least **two** recent events to be called a hotspot at all (the presence gate).
+The two axes cross into a seven-category taxonomy that separates a fresh rise
+from a sustained high level from a wind-down (see *Classification* below).
 
 Because the recent-event counts per unit are often small, the rigorous
 classification is complemented by a **watch-list** that ranks units for
@@ -76,9 +84,14 @@ populations, so spatial smoothing across neighbours would be misleading.
 
 | Model | Role |
 |-------|------|
-| **Bayesian (crude)** | The **primary detector**. Estimates the recency proportion per unit with no covariate adjustment. Drives the hotspot list, the maps and the recommendations. |
+| **Joint two-period Beta-Binomial** | The **primary detector** (config `two_period_model`). Fits the current and historical windows together, reading the level from the current-period rate and the trend directly from a hierarchical per-unit change `delta`. No covariate adjustment; drives the hotspot list, the maps and the recommendations. |
 | **Bayesian + covariates** | An **explanatory layer**, reported alongside the crude result (never overriding it). Adjusts for `proportion_high_risk` to ask *"is the burden higher than the risk-group mix predicts?"*. The adjustment is descriptive, not causal. |
-| **Truncated Binomial** | Optional branch (`--use-hurdle`) for very sparse data dominated by structural zeros — fits the Beta-Binomial only on active testing sites. |
+
+The single-window hierarchical Beta-Binomial (`run_model`) remains available as a
+fallback. The Truncated Binomial ("Hurdle") and the two-part zero-inflated
+branches have both been **retired**: zero-count units are handled by the
+denominator filter plus the two-recent-event presence gate, so the extra
+sub-models added complexity without improving detection.
 
 The covariate model is descriptive on purpose: `proportion_high_risk` lies
 on the causal pathway from local environment to recent infection, so
@@ -194,7 +207,13 @@ wizard, not stored in the config. Key fields:
     "use_non_centered": true,
     "auto_select_parametrization": true
   },
-  "detection": { "smr_threshold": 2.0, "sir_threshold": 1.5 },
+  "detection": {
+    "smr_threshold": 1.0, "sir_threshold": 1.0,
+    "smr_low_threshold": 1.0, "sir_low_threshold": 1.0,
+    "confidence_level": 0.80
+  },
+  "smr_leave_one_out": true,
+  "two_period_model": true,
   "watchlist": { "burden_top_frac": 0.80, "rate_percentile": 0.80 }
 }
 ```
@@ -206,11 +225,17 @@ wizard, not stored in the config. Key fields:
 - **Analysis window & baseline** are wizard choices too (see *The interactive
   wizard*): the baseline length is derived from the window (1-6 m → 12,
   7-9 m → 18, 10-12 m → 24) and never starts before 2023-01-01.
-- **`detection`** — the epidemiological cut-offs for the SMR/SIR exceedance
-  taxonomy. A unit is flagged on an axis when `P(ratio > threshold)` clears
-  its FDR cut-off. `smr_threshold = 2.0` (a doubling vs national) and
-  `sir_threshold = 1.5` are the conventional elevated / moderately-elevated
-  levels; tune them here.
+- **`detection`** — the cut-offs for the level/trend exceedance taxonomy. A unit
+  is flagged on an axis when `P(ratio > threshold)` clears its FDR cut-off, and
+  the confidence floor of that cut-off is `confidence_level`. All ratio
+  thresholds are **1.0 (parity)**: a unit is flagged when it is credibly *above*
+  the reference, with no arbitrary multiplier (the old `2.0` / `1.5` are gone). A
+  simulation (`validation/threshold_simulation.py`) showed any multiplier above
+  parity detects nothing on this sparse data. `confidence_level = 0.80` is the
+  Richardson et al. (2004) D(0.8,1) rule, calibrated by the same simulation.
+- **`smr_leave_one_out`** (default `true`) — compute the national reference rate
+  excluding each unit's own counts, so a dominant unit cannot mask itself.
+- **`two_period_model`** (default `true`) — use the joint two-period detector.
 - **`watchlist`** — triage knobs for the burden + rate watch-list (see
   *Watch-list*). `burden_top_frac` (default 0.80) sets the cumulative share of
   the recent caseload counted as "high burden"; `rate_percentile` (default
