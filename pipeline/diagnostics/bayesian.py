@@ -52,10 +52,10 @@ def calculate_bayesian_diagnostics(trace, df, level_name, national_rate, model=N
     }
 
     # Convergence diagnostics (R-hat). Models name their per-territory
-    # parameters differently -- the standard/two-part model uses alpha (intercept)
-    # and beta (slope), the two-period model uses a (intercept) and delta
-    # (current-period change) -- so pick whichever intercept/slope-style variables
-    # are present rather than assuming fixed names.
+    # parameters differently -- the standard single-window model uses alpha
+    # (intercept) and beta (slope), the two-period model uses a (intercept) and
+    # delta (current-period change) -- so pick whichever intercept/slope-style
+    # variables are present rather than assuming fixed names.
     rhat = az.rhat(trace)
     _int_var = next((v for v in ('alpha', 'a') if v in rhat), None)
     _slope_var = next((v for v in ('beta', 'delta') if v in rhat), None)

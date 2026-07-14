@@ -42,8 +42,8 @@ HOTSPOT_LABELS = frozenset({
 # One recent case against a near-zero (floored) historical baseline inflates the
 # SIR ratio into a spurious "Emerging hotspot" -- the same failure mode as a
 # zero-count territory, one tier up. Requiring at least this many current events
-# keeps a rise-vs-history call from resting on a single observation. Part of the
-# presence gate (two-part model, Fu 2023).
+# keeps a rise-vs-history call from resting on a single observation. This is the
+# presence half of Fu 2023's presence x intensity view of a hotspot.
 MIN_HOTSPOT_CURRENT_EVENTS = 2
 
 
@@ -143,20 +143,18 @@ def classify_with_smr_sir(row: pd.Series,
     }
     label = label_map.get((sir_state, smr_state), "Normal")
 
-    # Presence gate (two-part model, Fu 2023). The SIR axis compares the current
-    # rate to a territory's OWN history; when that history is a zero (or a thin
-    # count) on a large test denominator, the Empirical-Bayes baseline collapses
-    # to the floor and SIR is inflated by construction, so a territory with no --
-    # or a single -- recent event in the current window is misclassified as an
-    # "Emerging hotspot". A recency hotspot must rest on an actual current signal:
-    # at least ``MIN_HOTSPOT_CURRENT_EVENTS`` recent events this window, and (when
-    # the two-part model provides it) a presence probability above 0.5.
+    # Presence gate (the presence half of Fu 2023's presence x intensity view).
+    # The SIR axis compares the current rate to a territory's OWN history; when
+    # that history is a zero (or a thin count) on a large test denominator, the
+    # Empirical-Bayes baseline collapses to the floor and SIR is inflated by
+    # construction, so a territory with no -- or a single -- recent event in the
+    # current window is misclassified as an "Emerging hotspot". A recency hotspot
+    # must therefore rest on an actual current signal: at least
+    # ``MIN_HOTSPOT_CURRENT_EVENTS`` recent events this window.
     if label in HOTSPOT_LABELS:
         rc = row.get('recent_count_curr', None)
         too_few_events = rc is not None and float(rc) < MIN_HOTSPOT_CURRENT_EVENTS
-        pp = row.get('presence_prob', None)
-        absent = pp is not None and not pd.isna(pp) and float(pp) < 0.5
-        if too_few_events or absent:
+        if too_few_events:
             return "Normal"
 
         # SIR-informativeness gate. The SIR (trend) axis compares the current

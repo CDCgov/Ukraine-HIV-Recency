@@ -6,10 +6,9 @@ For each taxonomy category (the seven SMR/SIR labels, the trend-uncertain label,
 No Data, and the two watch-list reasons) this builds a SEPARATE synthetic
 dataset: a fixed low-rate background of normal hexes plus ONE engineered target
 hex designed to land in that category. Each dataset is run through the full
-pipeline twice -- once with the default two-part model and once with the opt-in
-two-period model -- and the target hex's classification and watch-list status
-are read back. The result is a side-by-side table showing how each model
-variant catches each engineered signal.
+pipeline with the production Joint Two-Period Beta-Binomial model, and the
+target hex's classification and watch-list status are read back. The result is
+a table showing how the detector catches each engineered signal.
 
 Separate runs (one strong target per run) keep the national rate and the
 FDR-controlled cut-offs from being distorted by other extreme hexes, so each
@@ -127,15 +126,14 @@ def build_dataset(design, target_hex, path):
         alls.to_excel(w, sheet_name='testing_sites', index=False)
 
 
-def run_pipeline(xlsx, model):
-    """Run the pipeline crude-only for one model; return (classification, watch_reason) for the target."""
+def run_pipeline(xlsx):
+    """Run the pipeline crude-only (two-period model); return (report_df, outdir) for the target."""
     cfg = json.loads((ROOT / 'config.json').read_text(encoding='utf-8'))
     cfg['excel_path'] = str(xlsx)
     cfg['analysis_type'] = 'standard'
     cfg['analysis_levels'] = [3]
     cfg['manual_model_selection'] = 'bayesian'  # crude only, for speed
-    cfg['two_part_model'] = (model == 'two_part')
-    cfg['two_period_model'] = (model == 'two_period')
+    cfg['two_period_model'] = True
     # leave-one-out national rate: the single strong target must not inflate its
     # own comparison denominator, or its category would blur.
     cfg['smr_leave_one_out'] = True
@@ -145,7 +143,7 @@ def run_pipeline(xlsx, model):
     # fast preset (2 chains x 500 draws) -- enough for the classification label,
     # and ~4x faster than the full posterior, which matters for 24 runs.
     cfg['fast_sampling'] = True
-    cfgp = SCRATCH / f'cfg_{model}.json'
+    cfgp = SCRATCH / 'cfg_two_period.json'
     cfgp.write_text(json.dumps(cfg), encoding='utf-8')
 
     before = set((ROOT / 'output').glob('*')) if (ROOT / 'output').exists() else set()
@@ -190,33 +188,31 @@ def main():
         xlsx = SCRATCH / f'ds_{key}.xlsx'
         build_dataset(design, thex, xlsx)
         row = {'intended': intended, 'target_hex': thex[:8]}
-        for model in ('two_part', 'two_period'):
-            out = run_pipeline(xlsx, model)
-            if isinstance(out, tuple) and isinstance(out[0], pd.DataFrame):
-                df, outdir = out
-                m = df[df['h3_id'].astype(str) == thex]
-                if len(m):
-                    r = m.iloc[0]
-                    cls = str(r.get('Classification', r.get('classification', '?')))
-                    onwl = bool(r.get('on_watchlist', False))
-                    wr = str(r.get('watch_reason', '') or '')
-                    row[f'{model}'] = cls
-                    row[f'{model}_watch'] = (wr if onwl and wr else ('yes' if onwl else '-'))
-                else:
-                    row[f'{model}'] = 'HEX-NOT-FOUND'; row[f'{model}_watch'] = '-'
-                shutil.rmtree(outdir, ignore_errors=True)
+        out = run_pipeline(xlsx)
+        if isinstance(out, tuple) and isinstance(out[0], pd.DataFrame):
+            df, outdir = out
+            m = df[df['h3_id'].astype(str) == thex]
+            if len(m):
+                r = m.iloc[0]
+                cls = str(r.get('Classification', r.get('classification', '?')))
+                onwl = bool(r.get('on_watchlist', False))
+                wr = str(r.get('watch_reason', '') or '')
+                row['detected'] = cls
+                row['watch'] = (wr if onwl and wr else ('yes' if onwl else '-'))
             else:
-                row[f'{model}'] = 'RUN-FAILED'; row[f'{model}_watch'] = '-'
+                row['detected'] = 'HEX-NOT-FOUND'; row['watch'] = '-'
+            shutil.rmtree(outdir, ignore_errors=True)
+        else:
+            row['detected'] = 'RUN-FAILED'; row['watch'] = '-'
         results.append(row)
         # write incrementally so a long run is never lost and progress is visible
         pd.DataFrame(results).to_csv(SCRATCH / 'taxonomy_results.csv', index=False)
-        print(f"[done] {intended:42s} two_part={row['two_part']:28s} two_period={row['two_period']}",
-              flush=True)
+        print(f"[done] {intended:42s} detected={row['detected']}", flush=True)
 
     res = pd.DataFrame(results)
     res.to_csv(SCRATCH / 'taxonomy_results.csv', index=False)
     print("\n" + "=" * 120)
-    print("TAXONOMY COVERAGE — engineered target per category, one run each, both models (crude)")
+    print("TAXONOMY COVERAGE — engineered target per category, two-period model (crude)")
     print("=" * 120)
     print(res.to_string(index=False))
 

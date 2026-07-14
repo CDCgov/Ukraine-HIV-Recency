@@ -113,7 +113,7 @@ def main() -> None:
         'convergence_ok': 'No',
     }
 
-    level = 'Hex_Res4'
+    level = 'Hex_Res3'
     period_str = '202602'
     gdf = _fake_gdf()
     start = pd.Timestamp('2026-02-01')

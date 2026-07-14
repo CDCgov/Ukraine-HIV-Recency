@@ -35,11 +35,11 @@ logger = logging.getLogger(__name__)
 def _manual_ppc(ax, ppc: Any, trace: Any) -> None:
     """Robust posterior-predictive overlay (observed vs predictive counts).
 
-    A fallback for models whose predictive ``az.plot_ppc`` cannot render: the
-    two-part zero-inflated CustomDist produces ragged internal shapes and a
-    degenerate KDE, so arviz raises. This draws the recent-count distribution of
-    the observed data against a pooled sample of the posterior predictive with
-    plain count histograms, which is model-agnostic and always renders.
+    A fallback for models whose predictive ``az.plot_ppc`` cannot render: some
+    predictive shapes (ragged internal shapes, a degenerate KDE) make arviz
+    raise. This draws the recent-count distribution of the observed data against
+    a pooled sample of the posterior predictive with plain count histograms,
+    which is model-agnostic and always renders.
     """
     pp = np.asarray(ppc.posterior_predictive['y_obs'].values).reshape(-1)
     obs = None
@@ -83,10 +83,10 @@ class BayesianDiagnosticsFixed:
                         try:
                             az.plot_ppc(ppc, ax=ax)
                         except (ValueError, KeyError, RuntimeError, TypeError) as e:
-                            # az.plot_ppc cannot render the two-part CustomDist
-                            # predictive (ragged shapes / degenerate KDE); fall
-                            # back to a robust manual observed-vs-predictive
-                            # count histogram so a PPC figure is always produced.
+                            # az.plot_ppc can raise on some predictive shapes
+                            # (ragged shapes / degenerate KDE); fall back to a
+                            # robust manual observed-vs-predictive count
+                            # histogram so a PPC figure is always produced.
                             logger.info(f"az.plot_ppc failed ({e}); using manual PPC histogram")
                             ax.clear()
                             _manual_ppc(ax, ppc, trace)

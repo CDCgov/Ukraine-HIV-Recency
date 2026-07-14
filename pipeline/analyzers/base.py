@@ -401,12 +401,12 @@ class BaseHotspotAnalyzer:
         FDR-controlled cut-offs, the two-axis ``classification_smr_sir`` label
         (and its alias ``classification``), the new-site flag, the national
         baseline and the percent deviation. It was copied verbatim into the
-        crude, hurdle and covariates fits; centralising it removes that
-        duplication. It is pure post-processing -- no sampling, no RNG -- so
-        the numbers are unchanged by where it lives.
+        crude and covariates fits; centralising it removes that duplication.
+        It is pure post-processing -- no sampling, no RNG -- so the numbers
+        are unchanged by where it lives.
 
         ``calculate_z_scores`` is intentionally left to the caller, since the
-        three fits compute it at slightly different points; it is independent
+        two fits compute it at slightly different points; it is independent
         of everything here.
         """
         # FDR threshold on the single-axis exceedance. The SMR/SIR taxonomy

@@ -1,18 +1,18 @@
 """
 Run the model-configuration wizard and record its decisions on the trail.
 
-After the Data Quality Assessment stage, the wizard decides three
-things for this level: whether to use Hurdle, the structural-zeros
-threshold, and whether to use LOO-IC for model selection. The CLI
-arguments (cached on the orchestrator on first level and reused for
-later ones) override the interactive flow.
+After the Data Quality Assessment stage, the wizard decides two
+things for this level: the spatial structure (exchangeable, for
+facility-based data) and whether to use LOO-IC for model selection.
+The CLI arguments (cached on the orchestrator on first level and
+reused for later ones) override the interactive flow.
 
 This routine closes the Data Quality Assessment audit stage, opens
-the Model Selection stage, runs the wizard, and records three
-decision rows on the trail (Hurdle config, Spatial structure,
-Model selection method). It returns the three level-scoped
-configuration values for the caller to use in downstream model
-selection.
+the Model Selection stage, runs the wizard, and records two decision
+rows on the trail (Spatial structure, Model selection method). It
+returns the level-scoped configuration values (use_loo_ic and the
+structural-zeros percentage) for the caller to use in downstream
+model selection.
 """
 
 from __future__ import annotations

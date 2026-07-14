@@ -231,8 +231,8 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
             )
 
             # Z-scores, then the shared FDR-controlled SMR/SIR classification
-            # (audit M2 — identical post-fit step in the hurdle and covariates
-            # fits, centralised in BaseHotspotAnalyzer._finalize_classification).
+            # (audit M2 — identical post-fit step shared with the covariates
+            # fit, centralised in BaseHotspotAnalyzer._finalize_classification).
             df = self.calculate_z_scores(df, national_rate)
             df = self._finalize_classification(df, national_rate)
 

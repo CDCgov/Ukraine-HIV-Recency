@@ -59,7 +59,7 @@ EXAMPLES OF PROBLEMS:
 
 2. Observed data has different shape than predictions
    → Model doesn't capture the distribution correctly
-   → SOLUTION: Consider zero-inflated model or different likelihood
+   → SOLUTION: Consider a different likelihood or revisiting the model specification
 
 3. Very wide prediction envelope
    → High uncertainty in model predictions

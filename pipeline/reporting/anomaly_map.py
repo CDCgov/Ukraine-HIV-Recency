@@ -167,8 +167,13 @@ def render_anomaly_map(cfg, national_baseline_rate, gdf_oblast_opt, output_path,
                   "Recent events are sparse, so nearly all territories are "
                   "low-reliability -- read this map as a triage signal, not a "
                   "precise or population-level prevalence map.")
-    plt.figtext(0.5, 0.005, caveat, ha='center', va='bottom', fontsize=7,
-                style='italic', wrap=True,
+    # Anchor the caveat directly beneath the MAP axes (axes fraction), not at the
+    # figure bottom. Ukraine is ~2:1 wide, so equal-aspect shrinks the axes into a
+    # centred band; a figure-bottom caption would sit far below the map with an
+    # empty letterbox between them. Anchoring to the axes keeps it flush under the
+    # map, and bbox_inches='tight' then trims the surrounding whitespace.
+    ax.annotate(caveat, xy=(0.5, -0.01), xycoords='axes fraction',
+                ha='center', va='top', fontsize=7, style='italic', wrap=True,
                 bbox=dict(boxstyle='round', facecolor='#fff3cd',
                           edgecolor='#e0a800', alpha=0.85))
 

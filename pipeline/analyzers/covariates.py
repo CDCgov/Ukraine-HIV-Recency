@@ -262,13 +262,17 @@ class BayesianCovariatesAnalyzer(BaseHotspotAnalyzer):
                 else:
                     logger.info("Sampling from posterior (this may take a few minutes)...")
 
+                # Honour a config-set core count (config['sampling']['cores']) the
+                # same way the crude model does, so both paths respect the same
+                # knob; default to 4 when unset.
+                cores_override = self.cfg.get('sampling', {}).get('cores')
                 trace, sampling_info = ParallelSamplingConfig.adaptive_sample(
                     model=model,
                     initial_target_accept=0.95,
                     draws=draws,
                     tune=tune,
                     chains=4,
-                    cores=4,
+                    cores=cores_override if cores_override else 4,
                     random_seed=self.cfg.get('random_seed', 42),
                     progressbar=False
                 )
@@ -655,7 +659,7 @@ class BayesianCovariatesAnalyzer(BaseHotspotAnalyzer):
             df_territory = self.calculate_z_scores(df_territory, national_rate)
 
             # Shared FDR-controlled SMR/SIR classification (audit M2 — same
-            # post-fit step as the crude and hurdle fits).
+            # post-fit step as the crude fit).
             df_territory = self._finalize_classification(df_territory, national_rate)
 
             # IMPORTANT: Classification based on Z-score, NOT on component interpretation
