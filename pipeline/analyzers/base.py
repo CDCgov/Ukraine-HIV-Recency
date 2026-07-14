@@ -31,16 +31,12 @@ import numpy as np
 import pandas as pd
 
 from pipeline.aggregation import (
-    aggregate_covariates as _aggregate_covariates,
     aggregate_stats as _aggregate_stats,
-    aggregate_stats_hard_stratified as _aggregate_stats_hard_stratified,
-    aggregate_stats_stratified as _aggregate_stats_stratified,
     analyze_network_change as _analyze_network_change,
     analyze_site_profile as _analyze_site_profile,
     calculate_national_baseline as _calculate_national_baseline,
     calculate_testing_intensity as _calculate_testing_intensity,
     classify_network_stability as _classify_network_stability,
-    detect_outbreak_and_artifact as _detect_outbreak_and_artifact,
     ensure_crs_match as _ensure_crs_match,
     generate_network_explanation as _generate_network_explanation,
     get_periods as _get_periods,
@@ -127,15 +123,11 @@ class BaseHotspotAnalyzer:
         if orchestrator is None:
             # Only create directories if running standalone (no orchestrator)
             self.bayesian_out_dir = self.base_out_dir / 'bayesian' / mode_suffix
-            self.bayesian_cov_out_dir = self.base_out_dir / 'bayesian_covariates' / mode_suffix
-
             self.bayesian_out_dir.mkdir(parents=True, exist_ok=True)
-            self.bayesian_cov_out_dir.mkdir(parents=True, exist_ok=True)
         else:
             # When orchestrator exists, paths are managed dynamically
             # No need to create directories upfront
             self.bayesian_out_dir = None
-            self.bayesian_cov_out_dir = None
 
     @staticmethod
     def _ensure_crs_match(gdf_left: gpd.GeoDataFrame, gdf_right: gpd.GeoDataFrame,
@@ -149,8 +141,6 @@ class BaseHotspotAnalyzer:
         if self.orchestrator:
             raise RuntimeError("get_output_dir() should not be called when orchestrator exists. Use get_output_path() instead.")
 
-        if self.MODEL_TYPE == "bayesian_covariates":
-            return self.bayesian_cov_out_dir
         if self.MODEL_TYPE == "bayesian":
             return self.bayesian_out_dir
         return None
@@ -339,22 +329,6 @@ class BaseHotspotAnalyzer:
             self._testing_sites = _load_testing_sites(self.cfg['excel_path'])
         return _aggregate_stats(self.cfg, self._testing_sites, gdf_admin,
                                 gdf_cases, start, end, b_start, b_end)
-
-    def aggregate_covariates(self, gdf_admin: gpd.GeoDataFrame, gdf_cases: gpd.GeoDataFrame, start: pd.Timestamp, end: pd.Timestamp) -> gpd.GeoDataFrame:
-        """Thin wrapper around :func:`pipeline.aggregation.aggregate_covariates`."""
-        return _aggregate_covariates(gdf_admin, gdf_cases, start, end)
-
-    def aggregate_stats_stratified(self, gdf_admin: gpd.GeoDataFrame, gdf_cases: gpd.GeoDataFrame, start: pd.Timestamp, end: pd.Timestamp, b_start: pd.Timestamp, b_end: pd.Timestamp) -> pd.DataFrame:
-        """Thin wrapper around :func:`pipeline.aggregation.aggregate_stats_stratified`."""
-        return _aggregate_stats_stratified(gdf_admin, gdf_cases, start, end, b_start, b_end)
-
-    def aggregate_stats_hard_stratified(self, gdf_admin: gpd.GeoDataFrame, gdf_cases: gpd.GeoDataFrame, start: pd.Timestamp, end: pd.Timestamp, b_start: pd.Timestamp, b_end: pd.Timestamp) -> pd.DataFrame:
-        """Thin wrapper around :func:`pipeline.aggregation.aggregate_stats_hard_stratified`."""
-        return _aggregate_stats_hard_stratified(gdf_admin, gdf_cases, start, end, b_start, b_end)
-
-    def detect_outbreak_and_artifact(self, territory_idx: int, df_hard: pd.DataFrame, national_rate: float) -> Dict[str, Any]:
-        """Thin wrapper around :func:`pipeline.aggregation.detect_outbreak_and_artifact`."""
-        return _detect_outbreak_and_artifact(territory_idx, df_hard, national_rate)
 
     def _get_soft_fallback_result(self) -> Dict[str, Any]:
         """Thin wrapper around :func:`pipeline.aggregation.soft_fallback_result`."""
