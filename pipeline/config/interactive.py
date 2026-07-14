@@ -51,21 +51,6 @@ class InteractiveConfig:
             print("Invalid choice. Please try again.")
 
     @staticmethod
-    def choose_hex_resolutions() -> List[int]:
-        """Return the H3 resolution to analyse.
-
-        The pipeline standardised on res3 (larger hexagons, more testing
-        facilities per unit). Finer resolutions are not offered because most
-        finer hexes hold zero or one active site, so the hexagon is then just a
-        relabelled facility rather than a meaningful analytical unit.
-        """
-        print("\n" + "=" * 60)
-        print("H3 HEXAGON RESOLUTION")
-        print("=" * 60)
-        print("Using res3 (larger hexagons, more facilities per unit).")
-        return [3]
-
-    @staticmethod
     def choose_levels() -> List:
         """Choose one or more analysis levels: res3 hexagons and/or adm1 oblasts.
 
@@ -198,43 +183,6 @@ class InteractiveConfig:
             return start, end
 
     @staticmethod
-    def choose_iterative_resolution() -> int:
-        """Return the single H3 resolution used in iterative mode.
-
-        The pipeline standardised on res3 (larger hexagons, more tests per cell,
-        higher reliability). Finer resolutions are not offered because most finer
-        hexes hold zero or one active site.
-        """
-        print("\n" + "=" * 60)
-        print("ITERATIVE H3 RESOLUTION")
-        print("=" * 60)
-        print("Using res3 (larger hexagons, more tests per hexagon).")
-        return 3
-
-    @staticmethod
-    def choose_period() -> Tuple[pd.Timestamp, pd.Timestamp]:
-        """Prompt for the analysis window; re-asks until end is after start."""
-        print("\n" + "=" * 60)
-        print("ANALYSIS PERIOD")
-        print("=" * 60)
-
-        while True:
-            try:
-                start_str = input("Start date (YYYY-MM-DD): ").strip()
-                end_str = input("End date (YYYY-MM-DD): ").strip()
-
-                start = pd.to_datetime(start_str)
-                end = pd.to_datetime(end_str)
-
-                if start >= end:
-                    print("Error: Start date must be before end date. Please try again.")
-                    continue
-
-                return start, end
-            except ValueError as e:
-                print(f"Error parsing dates: {e}. Please use YYYY-MM-DD format.")
-
-    @staticmethod
     def choose_iterative_date_range() -> Tuple[pd.Timestamp, pd.Timestamp]:
         """Choose date range for iterative analysis."""
         print("\n" + "=" * 60)
@@ -268,27 +216,6 @@ class InteractiveConfig:
                 return start, end
             except ValueError as e:
                 print(f"Error parsing dates: {e}. Please use YYYY-MM-DD format.")
-
-    @staticmethod
-    def choose_parametrization() -> str:
-        """Prompt for non-centered (default) vs centered parametrization."""
-        print("\n" + "=" * 60)
-        print("BAYESIAN PARAMETRIZATION")
-        print("=" * 60)
-        print("1 - Non-centered (default, recommended)")
-        print("2 - Centered (for large samples only)")
-        print("\nInfo:")
-        print("  Non-centered: Better for small samples, reduces divergences (RECOMMENDED)")
-        print("  Centered: Standard parametrization, only for large samples (>50 territories)")
-        print("  Note: System will auto-select based on data if configured")
-
-        while True:
-            choice = input("\nEnter your choice (1/2) [default: 1]: ").strip()
-            if choice == '' or choice == '1':
-                return 'non_centered'
-            elif choice == '2':
-                return 'centered'
-            print("Invalid choice. Please try again.")
 
     @staticmethod
     def ask_overwrite_config(config_path: str) -> bool:

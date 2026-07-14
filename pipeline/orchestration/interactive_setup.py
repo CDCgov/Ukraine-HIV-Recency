@@ -81,8 +81,11 @@ def run_interactive_setup(config: Dict[str, Any]) -> str:
 
     config.setdefault('detection', {})['confidence_level'] = InteractiveConfig.choose_confidence_level()
 
-    parametrization = InteractiveConfig.choose_parametrization()
-    config['bayesian_parametrization'] = parametrization
+    # Parametrization is not prompted: with bayesian.auto_select_parametrization
+    # (on by default) the pipeline picks non-centered vs centered from the data
+    # (territory count and average tests), overriding any manual choice. Seed the
+    # default; the auto-selector decides.
+    config['bayesian_parametrization'] = 'non_centered'
 
     # The explanatory covariate model has been retired (on this data the risk-group
     # composition does not explain recency; see the indirect-standardization
