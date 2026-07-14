@@ -23,14 +23,13 @@ import pipeline.bootstrap  # noqa: F401 -- side-effect import
 import argparse
 import json
 import logging
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
 from pipeline.analyzers import BayesianAnalyzer  # noqa: F401 -- re-exported for test_convergence_gate
 from pipeline.config import InteractiveConfig
-from pipeline.constants import DEFAULT_CONFIG
+from pipeline.constants import DEFAULT_CONFIG  # noqa: F401 -- re-exported for test_convergence_gate
 from pipeline.logging_setup import check_compiler_availability, setup_logging
 from pipeline.orchestrator import PipelineOrchestrator
 
@@ -81,11 +80,12 @@ def main():
     output_base = log_dir
 
     if args.test:
-        config_path = 'config_universal.json' if os.path.exists('config_universal.json') else None
-        orchestrator = PipelineOrchestrator(config_path, run_timestamp=timestamp,
+        # Headless smoke run: no wizard. PipelineOrchestrator(None) loads
+        # DEFAULT_CONFIG, which IS config.json plus a default hex resolution (the
+        # one field the wizard would otherwise set), so --test exercises the exact
+        # production methodology from the single source of truth.
+        orchestrator = PipelineOrchestrator(None, run_timestamp=timestamp,
                                            output_base=output_base, use_loo_ic=args.use_loo_ic)
-        if not config_path:
-            orchestrator.config = DEFAULT_CONFIG.copy()
         orchestrator.run_full_pipeline()
         logger.info("\nTEST MODE COMPLETED!")
         return

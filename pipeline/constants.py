@@ -8,8 +8,12 @@ place, so they can be adjusted without touching the analysis code.
 and the priors (MCMC thresholds, ESS target, clip values for logit, etc.),
 each annotated with its literature source. ``DEFAULT_CONFIG`` is the fall-
 back configuration used by ``--test`` mode and when no JSON config is
-passed on the command line.
+passed on the command line; it is DERIVED from ``config.json`` at import
+time (see ``_load_repo_config``) so the two can never drift.
 """
+
+import json
+from pathlib import Path
 
 
 # Semantic pipeline version. Bump the minor on a methodological change
@@ -283,40 +287,10 @@ ANALYSIS_CONSTANTS = {
 # CONFIGURATION
 # =============================================================================
 
-DEFAULT_CONFIG = {
-    "excel_path": "data/input_data.xlsx",
-    "output_dir": "output",
-    "target_crs": "EPSG:3857",
-    "analysis_period": {
-        "start": "2026-01-01",
-        "end": "2026-03-31"
-    },
-    "residual_thresholds": {
-        "obvious": 2.0,
-        "slight": 1.0
-    },
-    "color_map": {
-        # Legacy single-axis labels (kept for any output produced before the
-        # SIR/SMR taxonomy was introduced; the map currently reads the new
-        # column when present and falls back to these otherwise).
-        "Obvious Increase": "#ef2bc1",
-        "Slight Increase":  "#ffab4d",
-        "No Difference":    "#d3d3d3",
-        "Slight Decrease":  "#38d430",
-        "Obvious Decrease": "#00b9e5",
-        # Two-dimensional SIR/SMR taxonomy.
-        "Established hotspot":        "#d62728",
-        "Emerging hotspot":           "#fb8500",
-        "Stable high-burden":         "#ffd60a",
-        "Declining from high-burden": "#48cae4",
-        "Emerging decrease":          "#a0e0a8",
-        "Significant decrease":       "#06d6a0",
-        "Elevated vs national (trend uncertain)": "#c77dff",
-        "Normal":                     "#d3d3d3",
-        "No Data":                    "#ffffff"
-    },
-    # Ukrainian translations for map labels (both legacy and SIR/SMR taxonomy).
-    "map_strings_ua": {
+# Static UA translation tables — code constants, not user-tunable config. The
+# map and reliability renderers fall back to these when a config omits them, so
+# both interactive (config.json) and headless (--test) runs render UA labels.
+MAP_STRINGS_UA = {
         # Legacy single-axis labels.
         "Obvious Increase": "Значне зростання",
         "Slight Increase":  "Незначне зростання",
@@ -346,9 +320,10 @@ DEFAULT_CONFIG = {
         "National baseline": "Національна базова лінія",
         "Territories by reliability": "Території за рівнем надійності",
         "Based on": "На основі"
-    },
-    # Oblast name translations: EN -> UA
-    "oblast_names_ua": {
+}
+
+# Oblast name translations: EN -> UA (code constant; see MAP_STRINGS_UA above).
+OBLAST_NAMES_UA = {
         "Vinnytska": "Вінницька",
         "Volynska": "Волинська",
         "Dnipropetrovska": "Дніпропетровська",
@@ -383,43 +358,36 @@ DEFAULT_CONFIG = {
         "Cherkaska": "Черкаська",
         "Chernivetska": "Чернівецька",
         "Chernihivska": "Чернігівська"
-    },
-    "analysis_mode": "h3_hexagons",
-    "admin_levels": [],
-    "hex_resolutions": [3],
-    "administrative_units": {
-        "adm3_path": "data/Ukraine_Adm3_OTG.geojson",
-        "adm2_path": "data/Ukraine_Adm2_Rayon.geojson",
-        "adm1_path": "data/Ukraine_Adm1_Oblast.geojson",
-        "otg_col": "ADM3_EN",
-        "rayon_col": "ADM2_EN",
-        "oblast_col": "ADM1_EN"
-    },
-    # Level/trend exceedance taxonomy. Both axes are tested at PARITY (ratio > 1,
-    # no multiplier): a cell is flagged when it is credibly above the reference.
-    # confidence_level 0.80 is the Richardson et al. (2004) D(0.8,1) rule,
-    # simulation-calibrated. Keep this block in sync with config.json.
-    "detection": {
-        "smr_threshold": 1.0,
-        "sir_threshold": 1.0,
-        "smr_low_threshold": 1.0,
-        "sir_low_threshold": 1.0,
-        "confidence_level": 0.80
-    },
-    "smr_leave_one_out": True,
-    "two_period_model": True,
-    # Combined burden + rate watch-list (pipeline.classification.add_watchlist).
-    # Triage knobs, NOT significance thresholds: the rigorous FDR hotspot call
-    # in `classification` is unaffected.
-    "watchlist": {
-        "burden_top_frac": 0.80,   # flag territories carrying the top 80% of recent cases
-        "rate_percentile": 0.80    # SMR >= 80th percentile => relatively elevated (top 20%)
-    },
-    "h3_hexagons": {
-        "res3_path": "data/h3_hexagons_res3.geojson",
-        "h3_id_col": "h3_id"
-    }
 }
+
+
+def _load_repo_config() -> dict:
+    """Load ``config.json`` (the single source of truth) from the repo root.
+
+    ``DEFAULT_CONFIG`` is DERIVED from this so the on-disk file and the in-code
+    fallback can never drift — that drift is what once let a stale hex resolution
+    survive a ``--test`` run. The path is resolved relative to THIS file, not the
+    working directory, so it holds no matter where the pipeline is launched from.
+    """
+    path = Path(__file__).resolve().parent.parent / 'config.json'
+    if not path.exists():
+        raise RuntimeError(
+            f"config.json not found at {path}: it is the single source of truth "
+            f"for the pipeline configuration and must be present."
+        )
+    with open(path, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+# DEFAULT_CONFIG mirrors config.json exactly, then overlays ONLY the two fields a
+# headless (--test / non-wizard) run needs and that config.json legitimately does
+# not carry because the interactive wizard sets them per run: the hex-resolution
+# list and the (empty) admin-level list. Every methodological value — the
+# detection block, two_period_model, smr_leave_one_out, watchlist — now lives in
+# exactly ONE place: config.json.
+DEFAULT_CONFIG = _load_repo_config()
+DEFAULT_CONFIG.setdefault('hex_resolutions', [3])
+DEFAULT_CONFIG.setdefault('admin_levels', [])
 
 
 

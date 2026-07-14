@@ -17,6 +17,8 @@ from typing import Any, Dict
 
 import geopandas as gpd
 
+from pipeline.constants import OBLAST_NAMES_UA
+
 
 def add_oblast_labels(cfg, ax, gdf_oblast: gpd.GeoDataFrame, lang: str = 'en') -> None:
     """
@@ -45,7 +47,7 @@ def add_oblast_labels(cfg, ax, gdf_oblast: gpd.GeoDataFrame, lang: str = 'en') -
         return
 
     # Ukrainian short name mapping
-    ua_short = cfg.get('oblast_names_ua', {})
+    ua_short = cfg.get('oblast_names_ua', OBLAST_NAMES_UA)
 
     # Reproject to WGS84 for centroid calculation if needed, then back.
     # to_crs raises pyproj CRSError or ValueError when the source CRS

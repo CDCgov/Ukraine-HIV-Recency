@@ -26,6 +26,7 @@ import pandas as pd
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
+from pipeline.constants import MAP_STRINGS_UA
 from pipeline.reporting.oblast_labels import add_oblast_labels
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ def render_anomaly_map(cfg, national_baseline_rate, gdf_oblast_opt, output_path,
         logger.warning(f"No data for {level_name} map")
         return None
 
-    ua = cfg.get('map_strings_ua', {}) if lang == 'ua' else {}
+    ua = cfg.get('map_strings_ua', MAP_STRINGS_UA) if lang == 'ua' else {}
 
     fig, ax = plt.subplots(figsize=(14, 14))
     cmap = cfg['color_map']
