@@ -54,8 +54,7 @@ later start); iterative additionally requires ≥ 2 windows to fit.
 ## Output
 
 Everything lands in a timestamped folder `output/<YYYYMMDDhhmmss>/`
-(`bayesian/`, `bayesian_covariates/`, `summary/`, `pipeline.log`). Per level
-you get:
+(`bayesian/`, `summary/`, `pipeline.log`). Per level you get:
 
 - `Report_*.xlsx` — per-unit results: counts, classification, the posterior
   National reference ratio (internal `smr_*`) mean/median + CI, reliability,

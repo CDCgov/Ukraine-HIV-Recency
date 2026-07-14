@@ -269,7 +269,6 @@ output/<timestamp>/
 │   ├── Watchlist_Map_*_*.png                    # burden + rate triage map
 │   ├── Interpretation_*.txt / Specification_Analysis_*.txt
 │   └── *_PPC.png / *_Forest.png / *_Pairs.png   # diagnostic plots
-├── bayesian_covariates/hex/<resN>/...           # parallel explanatory layer
 ├── summary/
 │   ├── Dashboard_*.png                          # one-page overview
 │   ├── Group_Attribution_Report.xlsx            # oblast risk-group attribution + SMR
