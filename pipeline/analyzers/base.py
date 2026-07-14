@@ -393,8 +393,7 @@ class BaseHotspotAnalyzer:
                 cutoff_smr_low=cutoff_smr_low,
                 cutoff_sir_low=cutoff_sir_low,
             ), axis=1)
-        # Single label set: the legacy single-axis classifier is retired
-        # (audit M4); `classification` aliases the taxonomy.
+        # `classification` aliases the two-axis SMR/SIR taxonomy label.
         df['classification'] = df['classification_smr_sir']
         # New sites (no historical testing) have an undefined trend axis; the
         # map marks them with an open circle rather than a colour class.

@@ -4,16 +4,13 @@ Human-readable interpretation of Bayesian diagnostics.
 The :class:`DiagnosticInterpreter` turns the raw diagnostics dict produced
 by :class:`~pipeline.diagnostics.reliability.ReliabilityScoreCalculator`
 (and the model-fitting machinery) into bulleted English strings that go
-into ``RECOMMENDATIONS.txt`` and the comparison report. The logic here is
-purely textual and has no PyMC dependency.
+into ``RECOMMENDATIONS.txt``. The logic here is purely textual and has no
+PyMC dependency.
 
-Two routines:
-
-* :meth:`interpret_bayesian_diagnostics` -- per-model interpretation
-  (one bullet block per quality metric: R-hat, ESS, divergences,
-  credible-interval coverage) plus a closing "RECOMMENDATIONS" block.
-* :meth:`generate_recommendations_report` -- side-by-side comparison of
-  the crude and covariate models with an optional reliability summary.
+:meth:`interpret_bayesian_diagnostics` produces the per-model
+interpretation: one bullet block per quality metric (R-hat, ESS,
+divergences, credible-interval coverage) plus a closing "RECOMMENDATIONS"
+block.
 """
 
 from __future__ import annotations
@@ -87,97 +84,3 @@ class DiagnosticInterpreter:
 
         return interpretation
 
-    @staticmethod
-    def generate_recommendations_report(bayesian_interp: List[str],
-                                        bayesian_cov_interp: List[str],
-                                        reliability_info: Optional[Dict[str, Any]] = None) -> str:
-        """Side-by-side comparison report of crude vs covariate models."""
-        lines: List[str] = []
-        lines.append("=" * 80)
-        lines.append("MODEL COMPARISON REPORT")
-        lines.append("=" * 80)
-        lines.append("")
-
-        qualities: Dict[str, str] = {}
-        if bayesian_interp:
-            for line in bayesian_interp:
-                if line.startswith("Overall Quality:"):
-                    qualities['Bayesian'] = line.split(":")[1].strip()
-                    break
-
-        if bayesian_cov_interp:
-            for line in bayesian_cov_interp:
-                if line.startswith("Overall Quality:"):
-                    qualities['Bayesian Covariates'] = line.split(":")[1].strip()
-                    break
-
-        lines.append("MODEL QUALITY SUMMARY:")
-        for model, quality in qualities.items():
-            lines.append(f"  {model}: {quality}")
-        lines.append("")
-
-        if reliability_info:
-            lines.append("=" * 80)
-            lines.append("RELIABILITY ASSESSMENT")
-            lines.append("=" * 80)
-            lines.append("")
-            lines.append(f"Overall Reliability Score: {reliability_info['overall_score']:.1f}/100")
-            lines.append(f"Rating: {reliability_info['rating']} {reliability_info['flag']}")
-            lines.append(f"Recommendation: {reliability_info['recommendation']}")
-            lines.append("")
-            lines.append("Component Scores:")
-            for comp_name, comp_data in reliability_info['components'].items():
-                comp_label = comp_name.replace('_', ' ').title()
-                lines.append(f"  • {comp_label} ({comp_data['weight']}%): {comp_data['score']:.0f}/100")
-                lines.append(f"    → {comp_data['interpretation']}")
-            lines.append("")
-            lines.append("Interpretation:")
-            if reliability_info['rating'] == 'HIGH':
-                lines.append("  [OK] HIGH reliability - Results are suitable for decision-making")
-                lines.append("     Data quality, sample size, and model fit are all adequate")
-            elif reliability_info['rating'] == 'MODERATE':
-                lines.append("  [WARN]  MODERATE reliability - Use results with caution")
-                lines.append("     Some limitations in data quality, sample size, or model fit")
-                lines.append("     Consider collecting more data or aggregating to higher level")
-            else:
-                lines.append("  [WARN]  LOW reliability - Results have high uncertainty")
-                lines.append("     Significant limitations in data quality, sample size, or model fit")
-                lines.append("     Strongly recommend collecting more data or aggregating to higher level")
-            lines.append("")
-            lines.append("=" * 80)
-            lines.append("")
-
-        lines.append("RECOMMENDATIONS:")
-
-        good_models = [m for m, q in qualities.items() if q == 'GOOD']
-        acceptable_models = [m for m, q in qualities.items() if q == 'ACCEPTABLE']
-
-        if good_models:
-            lines.append(f"  [OK] Recommended models: {', '.join(good_models)}")
-            lines.append(f"     → These models have passed all quality checks")
-        elif acceptable_models:
-            lines.append(f"  [WARN]  Acceptable models: {', '.join(acceptable_models)}")
-            lines.append(f"     → Use with caution, verify key findings")
-        else:
-            lines.append(f"  [FAIL] No models passed quality checks")
-            lines.append(f"     → Consider aggregating to higher level or collecting more data")
-
-        lines.append("")
-
-        if 'Bayesian Covariates' in qualities:
-            lines.append("BAYESIAN COVARIATES NOTES:")
-            lines.append("  • Accounts for risk group differences")
-            lines.append("  • Can detect testing artifacts")
-            lines.append("  • Most comprehensive analysis")
-            lines.append("")
-
-        if 'Bayesian' in qualities:
-            lines.append("BAYESIAN NOTES:")
-            lines.append("  • Robust to small sample sizes")
-            lines.append("  • Handles zero counts well")
-            lines.append("  • Provides uncertainty quantification")
-            lines.append("")
-
-        lines.append("=" * 80)
-
-        return '\n'.join(lines)

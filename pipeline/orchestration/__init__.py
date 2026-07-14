@@ -25,7 +25,6 @@ from pipeline.orchestration.bayesian_dispatch import run_bayesian_dispatch
 from pipeline.orchestration.interpret_bayesian import interpret_bayesian_diagnostics
 from pipeline.orchestration.bayesian_plots import create_bayesian_plots
 from pipeline.orchestration.finalize_model_choice import finalize_model_choice
-from pipeline.orchestration.comparison_report import generate_comparison_report
 
 __all__ = [
     "check_diagnostics",
@@ -54,5 +53,4 @@ __all__ = [
     "interpret_bayesian_diagnostics",
     "create_bayesian_plots",
     "finalize_model_choice",
-    "generate_comparison_report",
 ]

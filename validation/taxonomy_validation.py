@@ -132,7 +132,6 @@ def run_pipeline(xlsx):
     cfg['excel_path'] = str(xlsx)
     cfg['analysis_type'] = 'standard'
     cfg['analysis_levels'] = [3]
-    cfg['manual_model_selection'] = 'bayesian'  # crude only, for speed
     cfg['two_period_model'] = True
     # leave-one-out national rate: the single strong target must not inflate its
     # own comparison denominator, or its category would blur.

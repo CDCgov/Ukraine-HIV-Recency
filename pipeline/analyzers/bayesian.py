@@ -13,10 +13,8 @@ reports.
 
 ``run_two_period_model`` is the production detector: a joint two-window fit
 that reads the level from the current-period rate and the trend directly from a
-hierarchical per-territory change ``delta``. The earlier two-part zero-inflated
-and Truncated-Binomial ("Hurdle") branches have been retired -- zero-count units
-are handled by the denominator filter plus the two-recent-event presence gate,
-so the extra sub-models added complexity without improving detection.
+hierarchical per-territory change ``delta``. Zero-count units are handled by the
+denominator filter plus the two-recent-event presence gate.
 """
 
 from __future__ import annotations
@@ -69,20 +67,20 @@ logger = logging.getLogger(__name__)
 
 
 class BayesianAnalyzer(BaseHotspotAnalyzer):
-    """Bayesian Hierarchical Model -- the **primary crude detector**.
+    """Bayesian hierarchical detector (the sole model).
 
     This analyzer answers "where is the recent-infection proportion
     higher than the national current rate?" without adjusting for the
     composition of who walks in the door. That is intentional: programme
     targeting cares about absolute burden, not about residual burden after
-    risk-mix adjustment. On this data the risk-group composition does not
+    risk-mix adjustment, and on this data the risk-group composition does not
     explain recency anyway (the two groups have near-equal recent-infection
-    rates), so the retired covariate model's adjustment was a near-no-op; the
-    per-group question is now answered by the supplementary indirect-
-    standardization analysis (:mod:`pipeline.standardization.group_attribution`).
+    rates). The per-group question is answered separately by the supplementary
+    indirect-standardization analysis
+    (:mod:`pipeline.standardization.group_attribution`).
 
     Outputs from this model drive the hotspot list, the maps and the
-    recommendations. It is the sole detector.
+    recommendations.
     """
 
     MODEL_TYPE = "bayesian"
@@ -309,8 +307,7 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
         (history and current), so ``a_i`` and ``delta_i`` are jointly identified
         only because ``delta_i`` partially pools toward a common trend
         ``mu_delta`` -- that shrinkage is what keeps the per-territory slope
-        well-behaved (the failure mode of the retired Hurdle model, which used a
-        free per-territory slope on a single observation).
+        well-behaved on units with very few recent events.
 
         This replaces the two-step SIR machinery (fit the current window, then
         take a ratio against a separately EB-shrunk history): the trend is read

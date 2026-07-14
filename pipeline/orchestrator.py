@@ -264,8 +264,7 @@ class PipelineOrchestrator:
         mode_suffix = 'hex'
         period_str = self.period_str
 
-        # Initialize the analyzer (the two-period Bayesian detector is the sole
-        # model; the covariate model has been retired).
+        # Initialize the analyzer (the two-period Bayesian detector).
         bayesian = BayesianAnalyzer(self.config, mode_suffix, orchestrator=self)
 
         # Store current audit trail in orchestrator for access by analyzers
@@ -360,10 +359,10 @@ class PipelineOrchestrator:
                 national_rate, national_se, audit_trail,
             )
 
-            # === Bayesian detector (the sole model; covariate model retired) ===
+            # === Bayesian detector (the sole model) ===
             gdf_bayes, diag_bayes = _orch_run_bayesian_dispatch(
                 bayesian, gdf, level_name, national_rate, national_se,
-                False, self.config,
+                self.config,
             )
 
             if diag_bayes:

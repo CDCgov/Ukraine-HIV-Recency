@@ -41,9 +41,8 @@ def collect_current_results(results: Dict[str, Any], period_str: str,
 
         if 'classification' in gdf.columns:
             obvious_increase = len(gdf[is_hotspot_fn(gdf)])
-            # The legacy "Slight Increase" soft tier was retired with the
-            # single-axis classifier (audit M4); the SMR/SIR taxonomy has no
-            # soft tier, so this is kept at 0 for JSON-schema stability.
+            # The SMR/SIR taxonomy has no soft tier; kept at 0 for JSON-schema
+            # stability of the historical-comparison snapshot.
             slight_increase = 0
 
             hotspots_by_level[level_name] = {

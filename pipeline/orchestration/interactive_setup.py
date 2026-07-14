@@ -87,10 +87,6 @@ def run_interactive_setup(config: Dict[str, Any]) -> str:
     # default; the auto-selector decides.
     config['bayesian_parametrization'] = 'non_centered'
 
-    # The explanatory covariate model has been retired (on this data the risk-group
-    # composition does not explain recency; see the indirect-standardization
-    # analysis). The two-period Bayesian model is the sole detector.
-    config['manual_model_selection'] = 'bayesian'
-    logger.info("[OK] Model: two-period Bayesian detector (covariate model retired)")
+    logger.info("[OK] Model: two-period Bayesian detector")
 
     return start.strftime('%Y%m')
