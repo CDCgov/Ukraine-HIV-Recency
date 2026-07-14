@@ -8,10 +8,20 @@ shrinkage helper for the historical baseline rate, the pooled-SE Z-scores
 from pipeline.standardization.thresholds import bayesian_fdr_threshold
 from pipeline.standardization.smr_sir import eb_baseline_rate, compute_smr_sir
 from pipeline.standardization.z_scores import calculate_z_scores
+from pipeline.standardization.group_attribution import (
+    period_composition,
+    oblast_group_rates,
+    oblast_standardization,
+    escalating_group_rates,
+)
 
 __all__ = [
     "bayesian_fdr_threshold",
     "eb_baseline_rate",
     "compute_smr_sir",
     "calculate_z_scores",
+    "period_composition",
+    "oblast_group_rates",
+    "oblast_standardization",
+    "escalating_group_rates",
 ]
