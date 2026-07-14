@@ -68,6 +68,7 @@ from pipeline.orchestration import (
     finalize_model_choice as _orch_finalize_model_choice,
     generate_audit_trail_reports as _orch_generate_audit_trail_reports,
     generate_iterative_hotspots_report as _orch_generate_iterative_hotspots_report,
+    generate_group_attribution_report as _orch_generate_group_attribution_report,
     generate_model_comparison as _orch_generate_model_comparison,
     generate_recommendations as _orch_generate_recommendations,
     interpret_bayesian_diagnostics as _orch_interpret_bayesian_diagnostics,
@@ -454,6 +455,14 @@ class PipelineOrchestrator:
 
         # Generate recommendations
         self.generate_recommendations()
+
+        # Supplementary oblast-level risk-group attribution + SMR (never fatal).
+        try:
+            ga_path = self.get_output_path("summary", "All_Levels",
+                                           "Group_Attribution_Report.xlsx", is_hex=False)
+            _orch_generate_group_attribution_report(self.config, Path(ga_path))
+        except Exception as e:  # noqa: BLE001 -- supplementary; must not abort the run
+            logger.warning(f"Group attribution report failed (non-fatal): {e}")
 
         _orch_create_summary_dashboard(self, SummaryDashboard)
         _orch_run_historical_comparison(self, HistoricalComparison, PIPELINE_VERSION)
