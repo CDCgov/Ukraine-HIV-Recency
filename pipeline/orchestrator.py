@@ -39,7 +39,7 @@ import pandas as pd
 import pymc as pm
 from dateutil.relativedelta import relativedelta
 
-from pipeline.analyzers import BayesianAnalyzer, BayesianCovariatesAnalyzer
+from pipeline.analyzers import BayesianAnalyzer
 from pipeline.classification import (
     HOTSPOT_LABELS,
     is_hotspot as _is_hotspot,
@@ -63,20 +63,16 @@ from pipeline.orchestration import (
     check_diagnostics as _orch_check_diagnostics,
     collect_current_results as _orch_collect_current_results,
     collect_dashboard_data as _orch_collect_dashboard_data,
-    create_bayesian_covariates_plots as _orch_create_bayesian_covariates_plots,
     create_bayesian_plots as _orch_create_bayesian_plots,
     create_summary_dashboard as _orch_create_summary_dashboard,
     finalize_model_choice as _orch_finalize_model_choice,
     generate_audit_trail_reports as _orch_generate_audit_trail_reports,
-    generate_comparison_report as _orch_generate_comparison_report,
     generate_iterative_hotspots_report as _orch_generate_iterative_hotspots_report,
     generate_model_comparison as _orch_generate_model_comparison,
     generate_recommendations as _orch_generate_recommendations,
-    interpret_bayesian_covariates_diagnostics as _orch_interpret_bayesian_covariates_diagnostics,
     interpret_bayesian_diagnostics as _orch_interpret_bayesian_diagnostics,
     prepare_iterative_windows as _orch_prepare_iterative_windows,
     resolve_paths as _orch_resolve_paths,
-    run_bayesian_covariates_dispatch as _orch_run_bayesian_covariates_dispatch,
     run_bayesian_dispatch as _orch_run_bayesian_dispatch,
     run_historical_comparison as _orch_run_historical_comparison,
     run_interactive_setup as _orch_run_interactive_setup,
@@ -168,7 +164,6 @@ class PipelineOrchestrator:
         """
         self.config = self._load_config(config_path)
         self.bayesian = None
-        self.bayesian_cov = None
         self.results = {}
         self.period_str = None
         self.run_timestamp = run_timestamp  # Set from main() for consistent timestamping
@@ -194,7 +189,7 @@ class PipelineOrchestrator:
         Creates correct path for saving file in new structure.
 
         Args:
-            model_type: "bayesian", "bayesian_covariates", or "summary"
+            model_type: "bayesian" or "summary"
             level_name: "Community", "District", "Oblast", "Hex_Res3"
             filename: File name (e.g., "Map_Community_202601.png")
             is_hex: True if this is hexagonal grid
@@ -327,9 +322,9 @@ class PipelineOrchestrator:
         mode_suffix = 'hex'
         period_str = self.period_str
 
-        # Initialize analyzers with orchestrator
+        # Initialize the analyzer (the two-period Bayesian detector is the sole
+        # model; the covariate model has been retired).
         bayesian = BayesianAnalyzer(self.config, mode_suffix, orchestrator=self)
-        bayesian_cov = BayesianCovariatesAnalyzer(self.config, mode_suffix, orchestrator=self)
 
         # Store current audit trail in orchestrator for access by analyzers
         self.current_audit_trail = None
@@ -353,9 +348,8 @@ class PipelineOrchestrator:
 
         all_summaries = []
 
-        # Initialize interpretation variables to avoid locals() issues
+        # Initialize interpretation variable to avoid locals() issues
         bayesian_interpretation = None
-        bayesian_cov_interpretation = None
 
         for level in levels:
             logger.info("\n" + "-" * 40)
@@ -403,11 +397,9 @@ class PipelineOrchestrator:
                             if response != 'y':
                                 logger.info("User chose to skip Bayesian models for this level")
                                 bayesian = None
-                                bayesian_cov = None
                         except (EOFError, KeyboardInterrupt):
                             logger.info("Skipping Bayesian models for this level")
                             bayesian = None
-                            bayesian_cov = None
                     else:
                         logger.warning("Non-interactive mode: proceeding with Bayesian models (may take hours)")
 
@@ -430,39 +422,26 @@ class PipelineOrchestrator:
             level_use_loo_ic = _wiz['use_loo_ic']
             pct_structural_zeros = _wiz['pct_structural_zeros']
 
-            # Manual model selection flags
-            _manual_model = self.config.get('manual_model_selection', 'auto')
-            _force_bayesian_only  = (_manual_model == 'bayesian')
-            _force_bayes_cov_only = (_manual_model == 'bayesian_covariates')
-
             spec_analysis, recommended_model = _orch_analyze_specification(
                 self, gdf, level_name, period_str,
                 national_rate, national_se, level_use_loo_ic, audit_trail,
             )
 
-            # === Apply manual model selection override ===
-            if _force_bayesian_only or _force_bayes_cov_only:
-                _label = 'Bayesian only' if _force_bayesian_only else 'Bayesian Covariates only'
-                logger.info(f"MANUAL MODEL SELECTION: {_label}")
-
-            # === Bayesian Analysis ===
+            # === Bayesian detector (the sole model; covariate model retired) ===
             gdf_bayes, diag_bayes = _orch_run_bayesian_dispatch(
                 bayesian, gdf, level_name, national_rate, national_se,
-                _force_bayes_cov_only, self.config,
+                False, self.config,
             )
 
             if diag_bayes:
                 bayesian.diagnostics.append(diag_bayes)
 
-            # === Interpret Bayesian diagnostics ===
             bayesian_interpretation = _orch_interpret_bayesian_diagnostics(
                 self, diag_bayes, level_name, period_str,
             )
-
-            # === Visualizations for Bayesian ===
             _orch_create_bayesian_plots(self, diag_bayes, level_name, period_str, plotter)
 
-            if not _force_bayes_cov_only and diag_bayes is not None:
+            if diag_bayes is not None:
                 gdf_bayes = ReliabilityScoreCalculator.calculate_territory_scores(gdf_bayes, diag_bayes, self.config)
                 bayesian.plot_map(gdf_bayes, level_name, start, end, b_start, b_end, "Bayesian",
                                   diagnostics=diag_bayes)
@@ -470,46 +449,13 @@ class PipelineOrchestrator:
                 bayesian.plot_reliability_map(gdf_bayes, level_name, start, end, "Bayesian")
                 bayesian.plot_watchlist_map(gdf_bayes, level_name, start, end, "Bayesian")
 
-            if not _force_bayes_cov_only:
-                model_used, final_diag, final_gdf = _orch_finalize_model_choice(
-                    diag_bayes, gdf_bayes, level_name, 'Bayesian',
-                    model_used, final_diag, final_gdf, all_summaries,
-                    report_kept_previous=False,
-                )
-
-            gdf_bayes_cov, diag_bayes_cov = _orch_run_bayesian_covariates_dispatch(
-                bayesian, bayesian_cov, gdf, gdf_cases, level, level_name,
-                start, end, b_start, b_end, national_rate, national_se,
-                _force_bayesian_only, self.config,
-            )
-
-            bayesian_cov_interpretation = _orch_interpret_bayesian_covariates_diagnostics(
-                self, diag_bayes_cov, level_name, period_str,
-            )
-
-            _orch_create_bayesian_covariates_plots(self, diag_bayes_cov, level_name, period_str, plotter)
-
-            if diag_bayes_cov is not None:
-                gdf_bayes_cov = ReliabilityScoreCalculator.calculate_territory_scores(gdf_bayes_cov, diag_bayes_cov, self.config)
-                bayesian_cov.plot_map(gdf_bayes_cov, level_name, start, end, b_start, b_end,
-                                      "Bayesian with Covariates", diagnostics=diag_bayes_cov)
-                bayesian_cov.save_report(gdf_bayes_cov, level_name, period_str, diagnostics=diag_bayes_cov)
-                bayesian_cov.plot_reliability_map(gdf_bayes_cov, level_name, start, end, "Bayesian with Covariates")
-                bayesian_cov.plot_watchlist_map(gdf_bayes_cov, level_name, start, end, "Bayesian with Covariates")
-
             model_used, final_diag, final_gdf = _orch_finalize_model_choice(
-                diag_bayes_cov, gdf_bayes_cov, level_name, 'Bayesian with Covariates',
+                diag_bayes, gdf_bayes, level_name, 'Bayesian',
                 model_used, final_diag, final_gdf, all_summaries,
-                report_kept_previous=True,
+                report_kept_previous=False,
             )
 
-            _orch_generate_comparison_report(
-                self, level_name, period_str,
-                bayesian_interpretation, bayesian_cov_interpretation,
-                final_diag, final_gdf,
-            )
-
-            # Store comparison data
+            # Store the detector's result for the run-level summary.
             self._add_model_comparison(level_name, model_used, final_diag)
 
             # Store results for dashboard
@@ -529,8 +475,6 @@ class PipelineOrchestrator:
             # Diagnostics workbook.
             if diag_bayes:
                 bayesian.save_diagnostics(level_name, period_str, diagnostics_list=[diag_bayes])
-            if diag_bayes_cov:
-                bayesian_cov.save_diagnostics(level_name, period_str, diagnostics_list=[diag_bayes_cov])
 
         _orch_generate_audit_trail_reports(self, period_str)
 
