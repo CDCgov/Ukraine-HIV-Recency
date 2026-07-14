@@ -78,3 +78,6 @@ Thumbs.db
 # validation run artifacts
 validation/sim_recs.pkl
 validation/threshold_simulation_results.txt
+
+# Private draft correspondence (never publish to the public repo)
+jim_correspondence/

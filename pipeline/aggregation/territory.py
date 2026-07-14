@@ -1112,6 +1112,32 @@ def aggregate_stats(cfg, testing_sites_df, gdf_admin: gpd.GeoDataFrame, gdf_case
     gdf_admin['all_tested_hist'] = gdf_admin.index.map(hist_all_counts).fillna(0).astype(int)
     gdf_admin['recent_count_hist'] = gdf_admin.index.map(hist_recent_counts).fillna(0).astype(int)
 
+    # Testing intensity (test-months): tests per active site-month, per territory
+    # and window. Site turnover (wartime closures/openings) moves raw volume for
+    # reasons unrelated to incidence, so the two-period detector normalises the
+    # level for it and the trend is then net of testing effort. Reuses the count
+    # spatial joins above (index_right = territory, test_date already attached).
+    for _joined, _col_int, _col_mon in [
+        (joined_curr_all, 'testing_intensity_curr', 'n_active_months_curr'),
+        (joined_hist_all, 'testing_intensity_hist', 'n_active_months_hist'),
+    ]:
+        gdf_admin[_col_int] = 0.0
+        gdf_admin[_col_mon] = 0
+        _j = _joined[_joined['index_right'].notna()].copy()
+        if len(_j) == 0:
+            continue
+        _j['year_month'] = _j['test_date'].dt.to_period('M')
+        _monthly = _j.groupby(['index_right', 'year_month']).size().reset_index(name='n_tests')
+        _agg = _monthly.groupby('index_right').agg(
+            n_active=('year_month', 'nunique'), total=('n_tests', 'sum'))
+        _agg['intensity'] = _agg['total'] / _agg['n_active'].clip(lower=1)
+        gdf_admin[_col_int] = gdf_admin.index.map(_agg['intensity']).fillna(0.0)
+        gdf_admin[_col_mon] = gdf_admin.index.map(_agg['n_active']).fillna(0).astype(int)
+
+    logger.info(f"Testing intensity (main model): mean current "
+                f"{gdf_admin['testing_intensity_curr'].mean():.1f} test-months, baseline "
+                f"{gdf_admin['testing_intensity_hist'].mean():.1f}")
+
     # Optional FRR correction (config-driven, off by default)
     frr = cfg.get('bayesian', {}).get('frr')
     if frr is not None and frr > 0:

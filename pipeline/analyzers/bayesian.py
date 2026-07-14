@@ -344,6 +344,30 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
                               ANALYSIS_CONSTANTS['prior_mu_logit_clip_max']['value']))
         prior_mu = float(np.log(_clip / (1.0 - _clip)))
 
+        # Testing-intensity normalization (site turnover). Standardized log
+        # test-months enter the LEVEL of each window, so equal effort maps to an
+        # equal shift and the trend delta is net of testing-effort change. Pooled
+        # standardization (current + history together) keeps the mapping identical
+        # across windows. Toggle with config 'intensity_adjustment' (default on).
+        _use_intensity = (bool(self.cfg.get('intensity_adjustment', True))
+                          and 'testing_intensity_curr' in df.columns
+                          and 'testing_intensity_hist' in df.columns)
+        if _use_intensity:
+            _li_curr = np.log1p(np.nan_to_num(df['testing_intensity_curr'].to_numpy(dtype=float), nan=0.0))
+            _li_hist = np.log1p(np.nan_to_num(df['testing_intensity_hist'].to_numpy(dtype=float), nan=0.0))
+            _pool = np.concatenate([_li_curr, _li_hist])
+            _mu_i, _sd_i = float(_pool.mean()), float(_pool.std())
+            if _sd_i > 1e-8:
+                z_int_curr = (_li_curr - _mu_i) / _sd_i
+                z_int_hist = (_li_hist - _mu_i) / _sd_i
+                logger.info(f"Two-period model: testing-intensity normalization ON "
+                            f"(mean {np.expm1(_mu_i):.1f} test-months)")
+            else:
+                _use_intensity = False
+                logger.info("Two-period model: intensity normalization OFF (no variation in test-months)")
+        else:
+            logger.info("Two-period model: testing-intensity normalization OFF")
+
         try:
             with pm.Model() as model:
                 # Period national logit levels (baseline vs current).
@@ -369,8 +393,19 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
                     a = pm.Normal('a', mu=0, sigma=sigma_a, shape=n_terr)
                     delta = pm.Normal('delta', mu=mu_delta, sigma=sigma_delta, shape=n_terr)
 
-                p_hist = pm.Deterministic('p_hist', pm.math.invlogit(mu_hist + a))
-                p_curr = pm.Deterministic('p_curr', pm.math.invlogit(mu_curr + a + delta))
+                # Testing-intensity effect on the level of each window (net-of-effort
+                # trend). One shared coefficient; the window enters via its own
+                # standardized log test-months.
+                if _use_intensity:
+                    beta_intensity = pm.Normal('beta_intensity', mu=0.0, sigma=1.0)
+                    _eff_hist = beta_intensity * pt.as_tensor_variable(z_int_hist)
+                    _eff_curr = beta_intensity * pt.as_tensor_variable(z_int_curr)
+                else:
+                    _eff_hist = 0.0
+                    _eff_curr = 0.0
+
+                p_hist = pm.Deterministic('p_hist', pm.math.invlogit(mu_hist + a + _eff_hist))
+                p_curr = pm.Deterministic('p_curr', pm.math.invlogit(mu_curr + a + delta + _eff_curr))
                 # Weakly-informative concentration: let the data pick kappa,
                 # including near-Binomial (large kappa). The previous
                 # Gamma(3, 0.2) (mean 15) forced overdispersion even on
@@ -428,6 +463,12 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
 
             saved_model = model
             logger.info("[OK] Two-period model converged")
+
+            if _use_intensity and 'beta_intensity' in trace.posterior:
+                _bi = trace.posterior['beta_intensity'].values.reshape(-1)
+                _lo, _hi = np.percentile(_bi, [2.5, 97.5])
+                logger.info("  beta_intensity (std. log test-months effect on the logit "
+                            f"level): {_bi.mean():.3f} [{_lo:.3f}, {_hi:.3f}]")
 
             p_curr_samples = trace.posterior['p_curr'].values.reshape(-1, n_terr)
             delta_samples = trace.posterior['delta'].values.reshape(-1, n_terr)
