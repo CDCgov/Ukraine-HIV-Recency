@@ -2,11 +2,12 @@
 Interactive model-configuration wizard.
 
 The :class:`ModelConfigurationWizard` is the single entry-point the
-orchestrator calls before fitting any model. With a TTY attached it asks
-two questions (data-source type, analysis mode) and shows the proposed
-configuration before sampling starts; without a TTY (or if anything in
-the interactive path raises) it falls back to a deterministic automatic
-configuration so headless / CI runs do not stall.
+orchestrator calls before fitting the model. With a TTY attached it asks
+one question (analysis mode: standard vs research, which toggles the extra
+LOO-IC diagnostics) and shows the proposed configuration before sampling
+starts; without a TTY (or if anything in the interactive path raises) it
+falls back to a deterministic automatic configuration so headless / CI runs
+do not stall.
 """
 
 from __future__ import annotations
@@ -60,25 +61,19 @@ class ModelConfigurationWizard:
                 print(f"Territories without sites: {pct_structural_zeros:.1f}%")
                 print("\n" + "-"*70)
 
-                # Question 1: Data type
-                print("\n1. Your data represents:")
-                print("   a) Testing site location (GPS coordinates of facilities)")
-                print("   b) Patient residence (registered address)")
-                print("\n   In most cases this is (a) - testing site location")
-
-                data_type = ModelConfigurationWizard._get_choice(['a', 'b'], default='a')
-
-                # Question 2: Analysis mode
-                print("\n2. Analysis mode:")
+                # Analysis mode: standard (fast heuristic) vs research, which adds
+                # LOO-IC diagnostics (the Binomial-vs-Beta-Binomial overdispersion
+                # test and the sigma-multiplier calibration). There is a single
+                # detector model; this only toggles those extra diagnostics.
+                print("\n1. Analysis mode:")
                 print("   a) Standard (recommended for practical use)")
-                print("   b) Research (detailed model comparison, for scientific publications)")
+                print("   b) Research (extra LOO-IC diagnostics, for scientific publications)")
                 print("\n   Choose (b) only if preparing a scientific publication")
 
                 analysis_mode = ModelConfigurationWizard._get_choice(['a', 'b'], default='a')
 
-                # Determine configuration
                 config = ModelConfigurationWizard._determine_config(
-                    data_type, analysis_mode, n_active_sites, pct_structural_zeros
+                    analysis_mode, n_active_sites, pct_structural_zeros
                 )
 
                 # Display recommendation
@@ -130,9 +125,9 @@ class ModelConfigurationWizard:
                 raise KeyboardInterrupt("User aborted input")
 
     @staticmethod
-    def _determine_config(data_type: str, analysis_mode: str,
-                         n_active_sites: int, pct_structural_zeros: float) -> Dict:
-        """Determine configuration based on answers."""
+    def _determine_config(analysis_mode: str,
+                          n_active_sites: int, pct_structural_zeros: float) -> Dict:
+        """Determine configuration based on the analysis-mode answer."""
         config = {}
 
         # Spatial structure
