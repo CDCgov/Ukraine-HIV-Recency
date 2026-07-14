@@ -44,7 +44,7 @@ from pipeline.classification import (
     HOTSPOT_LABELS,
     is_hotspot as _is_hotspot,
 )
-from pipeline.config import InteractiveConfig, ModelConfigurationWizard
+from pipeline.config import InteractiveConfig
 from pipeline.config.models import BayesianConfig
 from pipeline.constants import ANALYSIS_CONSTANTS, DEFAULT_CONFIG, PIPELINE_VERSION
 from pipeline.diagnostics import (
@@ -150,7 +150,7 @@ class PipelineOrchestrator:
     """Orchestrates the complete analysis pipeline."""
 
     def __init__(self, config_path: Optional[str] = None, run_timestamp: Optional[str] = None,
-                 output_base: Optional[Path] = None, use_loo_ic: bool = False):
+                 output_base: Optional[Path] = None):
         """Build the orchestrator and fix the output-directory layout.
 
         Args:
@@ -160,7 +160,6 @@ class PipelineOrchestrator:
             output_base: pre-made timestamped session directory; when given it
                 is used verbatim (``main()`` already created it), otherwise the
                 path is derived from ``config['output_dir']`` on first write.
-            use_loo_ic: select models via LOO-IC instead of the heuristic score.
         """
         self.config = self._load_config(config_path)
         self.bayesian = None
@@ -168,7 +167,6 @@ class PipelineOrchestrator:
         self.period_str = None
         self.run_timestamp = run_timestamp  # Set from main() for consistent timestamping
         self.model_comparison_data = []  # Store model comparison data
-        self.use_loo_ic = use_loo_ic  # Use LOO-IC for model selection
 
         # Decision Audit Trail - will be initialized per level
         self.audit_trails = {}  # Dictionary to store audit trail for each level
@@ -227,62 +225,6 @@ class PipelineOrchestrator:
         output_path.mkdir(parents=True, exist_ok=True)
 
         return output_path / filename
-
-    def _run_loo_ic_model_selection(self, df_analysis: pd.DataFrame, gdf: gpd.GeoDataFrame,
-                                     level_name: str, national_rate: float,
-                                     national_se: float) -> Dict[str, Any]:
-        """Compare Binomial vs Beta-Binomial by LOO-IC on the active territories.
-
-        Fits both likelihoods on the same exchangeable mean structure and uses
-        leave-one-out cross-validation to test whether the data actually
-        support the extra-binomial variation, or whether the overdispersion
-        parameter is essentially unidentified on these small counts (audit
-        C3-B / Mo2). These are dedicated diagnostic fits, separate from the
-        production fit, so they do not affect the classification or maps.
-
-        The heuristic specification summary is still produced (it drives the
-        ``Specification_Analysis`` report and surfaces zero-inflation /
-        outlier flags); the LOO verdict is merged into it.
-
-        Args:
-            df_analysis: active territories (``all_tested_curr > 0``).
-            gdf: full GeoDataFrame (unused here; kept for signature stability).
-            level_name: level being analysed (for logging).
-            national_rate / national_se: national baseline summaries.
-
-        Returns:
-            The specification-analysis dict, augmented with the LOO comparison
-            fields and a data-driven ``recommended_model`` string.
-        """
-        from pipeline.diagnostics.overdispersion import compare_binomial_betabinomial
-
-        analysis = AutoSpecificationSystem.recommend_specification(
-            df_analysis,
-            y_col='recent_count_curr',
-            n_col='all_tested_curr'
-        )
-
-        try:
-            loo_result = compare_binomial_betabinomial(df_analysis, national_rate, self.config)
-            analysis.setdefault('data_analysis', {}).update(loo_result)
-
-            best = loo_result.get('loo_best_model')
-            if best is None:
-                analysis.setdefault('warnings', []).append(
-                    f"LOO comparison unavailable: {loo_result.get('error', 'unknown error')}")
-            elif loo_result.get('overdispersion_supported'):
-                analysis['recommended_model'] = (
-                    'Beta-Binomial (overdispersion supported by LOO)')
-            else:
-                analysis['recommended_model'] = (
-                    'Beta-Binomial (Binomial not rejected by LOO; overdispersion weak — '
-                    'Beta-Binomial nests it harmlessly)')
-        except (ValueError, KeyError, AttributeError, RuntimeError) as e:
-            logger.error(f"LOO-IC model comparison failed: {e}")
-            analysis.setdefault('warnings', []).append(f"LOO-IC comparison failed: {e}")
-
-        return analysis
-
     def _validate_config(self, config: Dict) -> Dict:
         """Thin wrapper around :func:`pipeline.orchestration.validate_config`."""
         return _orch_validate_config(config, bayesian_config_cls=BayesianConfig)
@@ -408,23 +350,14 @@ class PipelineOrchestrator:
 
             _orch_assess_data_quality(audit_trail, gdf)
 
-            # Cache original CLI args on first level; reuse on subsequent levels
-            if not hasattr(self, '_original_cli_use_loo_ic'):
-                self._original_cli_use_loo_ic = self.use_loo_ic
-
-            cli_args = {
-                'use_loo_ic': self._original_cli_use_loo_ic
-            }
-
             _wiz = _orch_run_wizard_and_record_decisions(
-                audit_trail, gdf, level_name, cli_args, self.config
+                audit_trail, gdf, level_name, self.config
             )
-            level_use_loo_ic = _wiz['use_loo_ic']
             pct_structural_zeros = _wiz['pct_structural_zeros']
 
             spec_analysis, recommended_model = _orch_analyze_specification(
                 self, gdf, level_name, period_str,
-                national_rate, national_se, level_use_loo_ic, audit_trail,
+                national_rate, national_se, audit_trail,
             )
 
             # === Bayesian detector (the sole model; covariate model retired) ===

@@ -15,7 +15,7 @@ The config must contain, in addition to the usual paths/bayesian block:
                     "iterative_analysis_months": N, "iterative_resolution": R.
 
 Run:
-    python validation/service_run.py <config.json> [--use-loo-ic]
+    python validation/service_run.py <config.json>
 """
 from __future__ import annotations
 
@@ -39,7 +39,6 @@ from pipeline.orchestrator import PipelineOrchestrator
 def main() -> None:
     parser = argparse.ArgumentParser(description="Non-interactive pipeline runner")
     parser.add_argument('config', help='Config JSON with analysis_type + mode fields set')
-    parser.add_argument('--use-loo-ic', action='store_true', default=False)
     args = parser.parse_args()
 
     timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -48,8 +47,7 @@ def main() -> None:
     setup_logging(log_to_stdout=True, log_to_file=True,
                   log_file=output_base / 'pipeline.log', log_level='INFO')
 
-    orch = PipelineOrchestrator(args.config, run_timestamp=timestamp, output_base=output_base,
-                                use_loo_ic=args.use_loo_ic)
+    orch = PipelineOrchestrator(args.config, run_timestamp=timestamp, output_base=output_base)
     cfg = orch.config
     cfg.setdefault('data_type', 'facility_based')
 

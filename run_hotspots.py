@@ -42,10 +42,6 @@ def main():
     parser.add_argument('--test', action='store_true', help='Run in test mode with default config')
     parser.add_argument('config', nargs='?', type=str, default=None, help='Path to config file')
 
-    # Model selection arguments
-    parser.add_argument('--use-loo-ic', action='store_true', default=False,
-                       help='Use LOO-IC for model selection instead of heuristic scoring')
-
     # Logging configuration arguments
     parser.add_argument('--log-stdout', action='store_true', default=True,
                        help='Enable logging to console (default: True)')
@@ -85,14 +81,14 @@ def main():
         # one field the wizard would otherwise set), so --test exercises the exact
         # production methodology from the single source of truth.
         orchestrator = PipelineOrchestrator(None, run_timestamp=timestamp,
-                                           output_base=output_base, use_loo_ic=args.use_loo_ic)
+                                           output_base=output_base)
         orchestrator.run_full_pipeline()
         logger.info("\nTEST MODE COMPLETED!")
         return
 
     config_path = args.config or (sys.argv[1] if len(sys.argv) > 1 else None)
     orchestrator = PipelineOrchestrator(config_path, run_timestamp=timestamp,
-                                       output_base=output_base, use_loo_ic=args.use_loo_ic)
+                                       output_base=output_base)
 
     orchestrator.run_interactive_setup()
     if config_path and orchestrator.config.get('run_mode') != 'iterative':

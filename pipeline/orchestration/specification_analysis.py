@@ -2,19 +2,15 @@
 Per-level data-specification analysis.
 
 Before the Bayesian fit, ``run_for_mode`` runs an auto-specification
-pass over the active (non-structural-zero) territories to recommend
-a model family and surface obvious red flags (excess zeros,
-overdispersion, outliers). Either the heuristic
-``AutoSpecificationSystem`` or the LOO-IC model-selection routine
-runs, depending on the per-level ``use_loo_ic`` flag. The textual
-report is written to ``Specification_Analysis_<level>_<period>.txt``
-and a "Data Specification Analysis" decision is recorded on the
-audit trail.
+pass over the active (non-structural-zero) territories to surface
+obvious red flags (excess zeros, overdispersion, outliers) via the
+heuristic ``AutoSpecificationSystem``. The textual report is written to
+``Specification_Analysis_<level>_<period>.txt`` and a "Data
+Specification Analysis" decision is recorded on the audit trail.
 
 The orchestrator is passed in so this routine can reach
-``get_output_path`` (per-level/hex directory policy) and
-``_run_loo_ic_model_selection`` without importing the orchestrator
-class directly.
+``get_output_path`` (per-level/hex directory policy) without importing
+the orchestrator class directly.
 """
 
 from __future__ import annotations
@@ -35,7 +31,6 @@ def analyze_specification(orchestrator: Any,
                           period_str: str,
                           national_rate: float,
                           national_se: float,
-                          level_use_loo_ic: bool,
                           audit_trail: Any) -> Tuple[Optional[Dict[str, Any]], str]:
     """Run specification analysis, write report, record audit decision; return (spec, recommended_model)."""
     logger.info(f"\n--- Data Specification Analysis ---")
@@ -45,19 +40,11 @@ def analyze_specification(orchestrator: Any,
     recommended_model = 'Bayesian Hierarchical Model'  # Default
 
     try:
-        # Use LOO-IC based selection if enabled
-        if level_use_loo_ic:
-            logger.info("Using LOO-IC for model selection")
-            spec_analysis = orchestrator._run_loo_ic_model_selection(
-                df_analysis, gdf, level_name, national_rate, national_se
-            )
-        else:
-            # Use heuristic-based selection (default)
-            spec_analysis = AutoSpecificationSystem.recommend_specification(
-                df_analysis,
-                y_col='recent_count_curr',
-                n_col='all_tested_curr'
-            )
+        spec_analysis = AutoSpecificationSystem.recommend_specification(
+            df_analysis,
+            y_col='recent_count_curr',
+            n_col='all_tested_curr'
+        )
 
         spec_report = ModelSpecificationAnalyzer.generate_specification_report(
             spec_analysis['data_analysis']
