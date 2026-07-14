@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 def load_and_filter_cases(config: Dict[str, Any]) -> Tuple[pd.DataFrame, pd.Timestamp, pd.Timestamp]:
-    """Load cases, attach H3 res-4 IDs, apply ``iterative_date_range`` filter."""
+    """Load cases, attach H3 res3 IDs, apply ``iterative_date_range`` filter."""
     excel_path = Path(config['excel_path'])
     logger.info(f"Loading cases from: {excel_path}")
 

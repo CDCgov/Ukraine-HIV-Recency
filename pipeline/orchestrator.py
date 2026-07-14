@@ -392,7 +392,7 @@ class PipelineOrchestrator:
                     logger.warning("[WARN] CRITICAL: VERY LARGE GRID DETECTED")
                     logger.warning(f"[WARN] Territories: {n_territories}")
                     logger.warning(f"[WARN] Estimated time for Bayesian models: {n_territories/100:.0f}-{n_territories/50:.0f} minutes")
-                    logger.warning("[WARN] Recommendation: Use H3 Res 4 instead")
+                    logger.warning("[WARN] Recommendation: Use the coarser H3 Res 3 (the standardised grid) instead")
                     logger.warning("=" * 80)
 
                     # Interactive confirmation if running in terminal
@@ -611,7 +611,7 @@ class PipelineOrchestrator:
         logger.info("ITERATIVE HOTSPOT SEARCH")
         logger.info("=" * 60)
 
-        # Load cases, attach H3 res-4 IDs, filter, and build sliding windows
+        # Load cases, attach H3 res3 IDs, filter, and build sliding windows
         df_cases, windows = _orch_prepare_iterative_windows(self.config)
 
         # Create output directory for iterative results

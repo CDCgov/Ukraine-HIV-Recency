@@ -20,7 +20,7 @@ Confirm `data/` contains:
   `type`, `longitude`, `latitude`) and, optionally, a `testing_sites` sheet.
   This file is not in the repository — place your local copy here (see
   [../data/README.md](../data/README.md)).
-- the H3 geometry layer `h3_hexagons_res4.geojson` (and `res3` if you use it)
+- the H3 geometry layer `h3_hexagons_res3.geojson`
 - the `Ukraine_Adm*.geojson` boundary layers (used only to label hexagons
   with place names and to draw the fallback map — not an analysis mode)
 
@@ -42,7 +42,7 @@ python run_hotspots.py config.json
 
 This **always** launches the interactive wizard, which asks:
 - **analysis type** — standard (single window) or iterative (sliding windows);
-- **levels** — any combination of `res3`, `res4`, `adm1` (oblasts);
+- **levels** — `res3` hexagons and/or `adm1` (oblasts);
 - **analysis window** — iterative: 3/6/9/12 months; standard: you enter the
   period (≤ 12 months). The **baseline is derived** (1-6 m → 12, 7-9 m → 18,
   10-12 m → 24) and never starts before 2023-01-01;
@@ -56,7 +56,6 @@ Useful flags:
 
 ```bash
 python run_hotspots.py config.json --use-loo-ic     # LOO-IC model selection
-python run_hotspots.py config.json --use-hurdle     # sparse-data hurdle branch
 python run_hotspots.py config.json --log-level DEBUG
 ```
 

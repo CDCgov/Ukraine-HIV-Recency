@@ -8,7 +8,7 @@ combined with local knowledge for decision-making.
 
 A Bayesian surveillance pipeline that flags hotspots of recent HIV
 infection in Ukraine from facility-based recency-testing data, aggregated
-onto an **H3 hexagonal grid** (res3 / res4) or **ADM1 oblasts** — selectable
+onto an **H3 hexagonal grid** (res3) or **ADM1 oblasts** — selectable
 per run, individually or in combination.
 
 ## Data
@@ -129,7 +129,7 @@ Place the following in `data/`:
     drop sites closed by the war when deciding `site_present` per period.
     If the sheet is absent the pipeline still runs (falls back to observed
     presence).
-- H3 geometry: `h3_hexagons_res4.geojson` (and `res3` / `res5` when used).
+- H3 geometry: `h3_hexagons_res3.geojson` (the pipeline standardised on res3).
 - `Ukraine_Adm*.geojson` boundary layers are **not** an analysis mode — they
   are used only to (a) label each hexagon with its oblast/rayon/community
   name in the iterative report and (b) draw oblast outlines on the fallback
@@ -157,8 +157,9 @@ python run_hotspots.py config.json
 "use defaults?" shortcut and no config-driven auto-start). It asks:
 
 1. **Analysis type** — standard (single window) or iterative (sliding windows).
-2. **Levels** — any combination of `res3`, `res4`, `adm1` (oblasts). Each
-   selected level is analysed separately, with its own reports and maps.
+2. **Levels** — `res3` hexagons and/or `adm1` (oblasts). Each selected level
+   is analysed separately, with its own reports and maps. (The pipeline
+   standardised on res3; finer resolutions are not offered.)
 3. **Analysis window**
    - *iterative:* 3 / 6 / 9 / 12 months.
    - *standard:* you enter the period start/end (window ≤ 12 months).
@@ -180,8 +181,6 @@ fully-specified config.
 |------|--------|
 | `--test` | Run on the built-in `DEFAULT_CONFIG` (a config file is optional); no wizard. |
 | `--use-loo-ic` | Use LOO-IC for model selection instead of the heuristic score. |
-| `--use-hurdle` | Legacy flag. The Truncated-Binomial ("Hurdle") model is retired, so this now falls back to the standard hierarchical model. |
-| `--hurdle-threshold N` | Structural-zero percentage that triggers the hurdle suggestion (default 70). |
 | `--log-level {DEBUG,INFO,WARNING,ERROR}` | Console / file log verbosity (default INFO). |
 | `--no-log-stdout` / `--no-log-file` | Disable console or file logging. |
 
@@ -202,7 +201,7 @@ wizard, not stored in the config. Key fields:
   "output_dir": "output",
   "target_crs": "EPSG:3857",
   "administrative_units": { "adm1_path": "data/Ukraine_Adm1_Oblast.geojson", "oblast_col": "ADM1_EN", "...": "..." },
-  "h3_hexagons": { "res3_path": "...", "res4_path": "...", "...": "..." },
+  "h3_hexagons": { "res3_path": "data/h3_hexagons_res3.geojson", "h3_id_col": "h3_id" },
   "bayesian": {
     "use_non_centered": true,
     "auto_select_parametrization": true
@@ -218,8 +217,8 @@ wizard, not stored in the config. Key fields:
 }
 ```
 
-- **Levels** are chosen in the wizard: any combination of `res3`, `res4`,
-  `adm1` (oblasts). `analysis_mode` stays `h3_hexagons` (a geometry flag);
+- **Levels** are chosen in the wizard: `res3` hexagons and/or `adm1`
+  (oblasts). `analysis_mode` stays `h3_hexagons` (a geometry flag);
   the oblast level is driven by the level choice and reads
   `administrative_units` / `adm1_path`.
 - **Analysis window & baseline** are wizard choices too (see *The interactive
@@ -242,7 +241,7 @@ wizard, not stored in the config. Key fields:
   0.80) sets the relative-rate cut (top 20% of the posterior relative rate). These do
   **not** affect the rigorous `classification`.
 - **`bayesian.resolution_sigma_multiplier`** (optional) — a map from level
-  name (e.g. `"Hex_Res4"` or `"Oblast"`) to a multiplier on the prior width;
+  name (e.g. `"Hex_Res3"` or `"Oblast"`) to a multiplier on the prior width;
   larger = weaker shrinkage. Absent → `1.0`.
 - **`bayesian.frr`** (optional) — false-recent-rate correction; off by
   default and not part of the standard protocol (the indicator is a
@@ -355,7 +354,7 @@ The standalone verification scripts live in `validation/`:
 python run_hotspots.py --test                       # full pipeline on the default config
 python validation/test_convergence_gate.py          # convergence-gate smoke test
 python validation/simulation_validation.py          # synthetic FDR / sensitivity / specificity check
-python validation/multiseed_stability.py config.json --seeds 42 43 44 --resolution 4
+python validation/multiseed_stability.py config.json --seeds 42 43 44 --resolution 3
 ```
 
 `validation/multiseed_stability.py` refits the model under several random seeds and
