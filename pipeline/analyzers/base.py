@@ -32,15 +32,11 @@ import pandas as pd
 
 from pipeline.aggregation import (
     aggregate_stats as _aggregate_stats,
-    analyze_network_change as _analyze_network_change,
-    analyze_site_profile as _analyze_site_profile,
     calculate_national_baseline as _calculate_national_baseline,
     calculate_testing_intensity as _calculate_testing_intensity,
     classify_network_stability as _classify_network_stability,
     ensure_crs_match as _ensure_crs_match,
-    generate_network_explanation as _generate_network_explanation,
     get_periods as _get_periods,
-    soft_fallback_result as _soft_fallback_result,
 )
 from pipeline.classification import (
     classify_with_exceedance as _classify_with_exceedance,
@@ -267,10 +263,6 @@ class BaseHotspotAnalyzer:
         """Thin wrapper around :func:`pipeline.io.load_testing_sites`."""
         return _load_testing_sites(excel_path)
 
-    def analyze_site_profile(self, site_id: str, gdf_cases: gpd.GeoDataFrame, b_start: pd.Timestamp, b_end: pd.Timestamp) -> Dict[str, Any]:
-        """Thin wrapper around :func:`pipeline.aggregation.analyze_site_profile`."""
-        return _analyze_site_profile(site_id, gdf_cases, b_start, b_end)
-
     def calculate_testing_intensity(self, gdf_cases: gpd.GeoDataFrame, start_date: pd.Timestamp, end_date: pd.Timestamp) -> Dict[str, Any]:
         """Thin wrapper around :func:`pipeline.aggregation.calculate_testing_intensity`."""
         return _calculate_testing_intensity(gdf_cases, start_date, end_date)
@@ -278,14 +270,6 @@ class BaseHotspotAnalyzer:
     def classify_network_stability(self, intensity_curr: float, intensity_hist: float, all_intensities_curr: np.ndarray, all_intensities_hist: np.ndarray) -> Dict[str, Any]:
         """Thin wrapper around :func:`pipeline.aggregation.classify_network_stability`."""
         return _classify_network_stability(intensity_curr, intensity_hist, all_intensities_curr, all_intensities_hist)
-
-    def analyze_network_change(self, territory_idx: int, gdf_admin: gpd.GeoDataFrame, gdf_cases: gpd.GeoDataFrame, df_sites: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp, b_start: pd.Timestamp, b_end: pd.Timestamp) -> Dict[str, Any]:
-        """Thin wrapper around :func:`pipeline.aggregation.analyze_network_change`."""
-        return _analyze_network_change(territory_idx, gdf_admin, gdf_cases, df_sites, start, end, b_start, b_end)
-
-    def generate_network_explanation(self, network_analysis: Dict[str, Any], stability: Dict[str, Any]) -> str:
-        """Thin wrapper around :func:`pipeline.aggregation.generate_network_explanation`."""
-        return _generate_network_explanation(network_analysis, stability)
 
     def calculate_national_baseline(self, gdf_cases: gpd.GeoDataFrame, b_start: pd.Timestamp, b_end: pd.Timestamp) -> Tuple[float, float]:
         """Thin wrapper around :func:`pipeline.aggregation.calculate_national_baseline`."""
@@ -329,10 +313,6 @@ class BaseHotspotAnalyzer:
             self._testing_sites = _load_testing_sites(self.cfg['excel_path'])
         return _aggregate_stats(self.cfg, self._testing_sites, gdf_admin,
                                 gdf_cases, start, end, b_start, b_end)
-
-    def _get_soft_fallback_result(self) -> Dict[str, Any]:
-        """Thin wrapper around :func:`pipeline.aggregation.soft_fallback_result`."""
-        return _soft_fallback_result()
 
     def calculate_z_scores(self, df: pd.DataFrame, national_rate: float) -> pd.DataFrame:
         """Thin wrapper around :func:`pipeline.standardization.calculate_z_scores`."""
