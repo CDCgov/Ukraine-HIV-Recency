@@ -291,38 +291,6 @@ class InteractiveConfig:
             print("Invalid choice. Please try again.")
 
     @staticmethod
-    def choose_model_selection() -> str:
-        """Choose which model(s) to run: bayesian, bayesian_covariates, or both.
-
-        The old 'Auto' option (which used to pick between the retired GLM and the
-        Bayesian model) is gone: the Bayesian model is always the detector, so the
-        only choice is whether to also run the explanatory covariate layer.
-        """
-        print("\n" + "=" * 60)
-        print("MODEL SELECTION")
-        print("=" * 60)
-        print("\n1 - Bayesian only (hierarchical, no covariates)")
-        print("2 - Bayesian with Covariates (stratified risk groups)")
-        print("3 - Both (Bayesian and Bayesian with Covariates)")
-        print("\nInfo:")
-        print("  Bayesian only:    the primary detector; best for sparse data, many zeros, small N")
-        print("  Bayesian Cov:     explanatory layer that accounts for risk-group composition")
-        print("  Both:             run the detector and the explanatory layer side by side")
-
-        while True:
-            try:
-                choice = input("\nEnter your choice (1/2/3) [default: 3 = both]: ").strip()
-                if choice == '1':
-                    return 'bayesian'
-                elif choice == '2':
-                    return 'bayesian_covariates'
-                elif choice == '' or choice == '3':
-                    return 'both'
-                print("Invalid choice. Please enter 1, 2, or 3.")
-            except (EOFError, KeyboardInterrupt):
-                return 'both'
-
-    @staticmethod
     def ask_overwrite_config(config_path: str) -> bool:
         """Ask if user wants to save configuration."""
         print("\n" + "=" * 60)

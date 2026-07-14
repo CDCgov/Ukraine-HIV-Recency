@@ -84,13 +84,10 @@ def run_interactive_setup(config: Dict[str, Any]) -> str:
     parametrization = InteractiveConfig.choose_parametrization()
     config['bayesian_parametrization'] = parametrization
 
-    model_selection = InteractiveConfig.choose_model_selection()
-    config['manual_model_selection'] = model_selection
-    _labels = {
-        'bayesian': 'Bayesian only',
-        'bayesian_covariates': 'Bayesian with Covariates only',
-        'both': 'Bayesian and Bayesian with Covariates',
-    }
-    logger.info(f"[OK] Model selection: {_labels.get(model_selection, model_selection)}")
+    # The explanatory covariate model has been retired (on this data the risk-group
+    # composition does not explain recency; see the indirect-standardization
+    # analysis). The two-period Bayesian model is the sole detector.
+    config['manual_model_selection'] = 'bayesian'
+    logger.info("[OK] Model: two-period Bayesian detector (covariate model retired)")
 
     return start.strftime('%Y%m')

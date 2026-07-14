@@ -1,6 +1,7 @@
 {
   "excel_path": "data/input_data.xlsx",
   "analysis_mode": "h3_hexagons",
+  "manual_model_selection": "bayesian",
   "administrative_units": {
     "adm3_path": "data/Ukraine_Adm3_OTG.geojson",
     "adm2_path": "data/Ukraine_Adm2_Rayon.geojson",
