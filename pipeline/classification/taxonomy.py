@@ -115,6 +115,17 @@ def classify_with_smr_sir(row: pd.Series,
     if 'all_tested_curr' in row and row['all_tested_curr'] == 0:
         return "No Data"
 
+    # Cold-cell gate (mirror of the hotspot presence gate). The increase/decrease
+    # axes describe a TREND, and a unit with no recent events in EITHER window has
+    # no trend to evaluate -- nothing to have risen or fallen from. Such a unit is
+    # Normal (grey), never a "decrease". A genuine fall (history had recent events,
+    # current has none) keeps its decrease label because recent_count_hist > 0.
+    _rc_curr = row.get('recent_count_curr', None)
+    _rc_hist = row.get('recent_count_hist', None)
+    if (_rc_curr is not None and _rc_hist is not None
+            and float(_rc_curr) == 0 and float(_rc_hist) == 0):
+        return "Normal"
+
     smr_high = float(row.get('exc_prob_smr', 0.0)) > cutoff_smr_high
     sir_high = float(row.get('exc_prob_sir', 0.0)) > cutoff_sir_high
     smr_low = float(row.get('exc_prob_smr_low', 0.0)) > cutoff_smr_low
