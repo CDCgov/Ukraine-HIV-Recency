@@ -650,6 +650,13 @@ class BayesianCovariatesAnalyzer(BaseHotspotAnalyzer):
                     per_territory = {tid: _weighted_mean(sub, col) for tid, sub in grouped}
                     df_territory[col] = df_territory['territory_idx'].map(per_territory)
 
+            # Carry the per-territory high-risk covariate through to the report so
+            # the risk-group composition behind the covariate adjustment is visible
+            # per unit (it is a per-territory constant, so the mean is that value).
+            if 'proportion_high_risk' in df_stratified.columns:
+                php = {tid: float(sub['proportion_high_risk'].mean()) for tid, sub in grouped}
+                df_territory['proportion_high_risk'] = df_territory['territory_idx'].map(php)
+
             # Calculate z-scores at territory level using unified method
             df_territory['national_baseline'] = national_rate
             # Percent deviation from the current national rate, via SMR.
@@ -683,6 +690,8 @@ class BayesianCovariatesAnalyzer(BaseHotspotAnalyzer):
                            'sir_mean', 'sir_lower', 'sir_upper',
                            'exc_prob_smr', 'exc_prob_sir', 'exc_prob_smr_low', 'exc_prob_sir_low',
                            'national_rate_curr', 'baseline_rate_eb',
+                           # Per-unit high-risk share behind the covariate adjustment.
+                           'proportion_high_risk',
                            # Combined burden + rate watch-list (add_watchlist).
                            'on_watchlist', 'watch_reason', 'watch_rank',
                            'burden_rank', 'rate_rank', 'burden_share_pct',
