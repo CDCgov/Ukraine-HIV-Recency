@@ -2,8 +2,8 @@
 Diagnostics helpers for the HIV hotspot pipeline.
 
 Posterior predictive checks, convergence summaries, reliability scoring,
-multicollinearity checks and the diagnostic plotters that turn a fitted
-trace into the numbers and figures the reports consume.
+and the diagnostic plotters that turn a fitted trace into the numbers and
+figures the reports consume.
 """
 from pipeline.diagnostics.ppc import PPCCalculator
 from pipeline.diagnostics.reliability import ReliabilityScoreCalculator

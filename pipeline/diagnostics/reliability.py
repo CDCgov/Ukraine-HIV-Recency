@@ -72,9 +72,6 @@ class ReliabilityScoreCalculator:
 
         Thresholds follow CDC (2019) and Lawson (2018): < 30% zeros is
         excellent, 30-50% good, 50-70% moderate, > 70% poor.
-
-        A graduated imputation penalty (5 / 10 / 15 / 20 points by
-        percentile of imputed ``proportion_high_risk``) is applied last.
         """
         if 'site_present' in df.columns:
             df_active = df[df['site_present'] == True].copy()
@@ -97,20 +94,6 @@ class ReliabilityScoreCalculator:
         n_active = len(df_active)
         n_total = len(df)
         interpretation += f" ({n_active}/{n_total} active sites)"
-
-        if 'imputed_proportion_high_risk' in df_active.columns:
-            pct_imputed = df_active['imputed_proportion_high_risk'].sum() / len(df_active) * 100
-            if pct_imputed > 0:
-                if pct_imputed < 25:
-                    penalty = 5
-                elif pct_imputed < 50:
-                    penalty = 10
-                elif pct_imputed < 75:
-                    penalty = 15
-                else:
-                    penalty = 20
-                score = max(0, score - penalty)
-                interpretation += f" (imputed risk data: {pct_imputed:.1f}%, penalty: -{penalty})"
 
         return score, interpretation
 
@@ -166,10 +149,6 @@ class ReliabilityScoreCalculator:
             elif ratio < 0.5:
                 score = max(0, score - 10)
                 interpretation += f" (current/historical ratio: {ratio:.2f})"
-
-        if 'imputed_proportion_high_risk' in row.index and row['imputed_proportion_high_risk']:
-            score = max(0, score - 10)
-            interpretation += " (imputed risk data)"
 
         return score, interpretation
 
@@ -307,9 +286,6 @@ class ReliabilityScoreCalculator:
                 overall = float('nan')
             else:
                 overall = 100.0 * float(np.exp(-_cv))
-
-            if row.get('imputed_proportion_high_risk', False) and not pd.isna(overall):
-                overall = max(0.0, overall - 10.0)
 
             _nh = row.get('all_tested_hist') or 0
             try:

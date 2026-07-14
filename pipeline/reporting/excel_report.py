@@ -155,12 +155,6 @@ def write_report(cfg: Dict[str, Any], active: gpd.GeoDataFrame,
         if _col in active.columns and _col not in report_cols:
             report_cols.append(_col)
 
-    # Covariate model only: the per-unit high-risk share behind the adjustment,
-    # so a reader can see the risk-group composition that moved (or, on this
-    # data, did not move) the covariate-adjusted level.
-    if 'proportion_high_risk' in active.columns and 'proportion_high_risk' not in report_cols:
-        report_cols.append('proportion_high_risk')
-
     # Combined burden + rate watch-list (pipeline.classification.add_watchlist):
     # an additive triage ranking that surfaces high-burden centres the rate
     # axis misses on sparse recency data.
@@ -169,11 +163,6 @@ def write_report(cfg: Dict[str, Any], active: gpd.GeoDataFrame,
                  'burden_high', 'rate_high']:
         if _col in active.columns and _col not in report_cols:
             report_cols.append(_col)
-
-    if 'high_outbreak' in active.columns:
-        report_cols.extend(['high_outbreak', 'low_outbreak', 'testing_artifact',
-                            'high_observed_curr', 'high_ci_upper',
-                            'low_observed_curr', 'low_ci_upper'])
 
     if 'testing_intensity_curr' in active.columns:
         report_cols.extend(['testing_intensity_curr', 'testing_intensity_hist',

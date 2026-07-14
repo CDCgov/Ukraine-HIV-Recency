@@ -75,13 +75,14 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
     higher than the national current rate?" without adjusting for the
     composition of who walks in the door. That is intentional: programme
     targeting cares about absolute burden, not about residual burden after
-    risk-mix adjustment.
+    risk-mix adjustment. On this data the risk-group composition does not
+    explain recency anyway (the two groups have near-equal recent-infection
+    rates), so the retired covariate model's adjustment was a near-no-op; the
+    per-group question is now answered by the supplementary indirect-
+    standardization analysis (:mod:`pipeline.standardization.group_attribution`).
 
     Outputs from this model drive the hotspot list, the maps and the
-    recommendations. The covariate model (:class:`BayesianCovariatesAnalyzer`)
-    is a parallel explanatory layer -- it asks the different question
-    "where is the burden higher than risk composition predicts?" and is
-    reported alongside, not used to override the crude classification.
+    recommendations. It is the sole detector.
     """
 
     MODEL_TYPE = "bayesian"

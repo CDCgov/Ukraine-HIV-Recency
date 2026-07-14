@@ -1,12 +1,11 @@
 """
 Interactive configuration prompts.
 
-The :class:`InteractiveConfig` collects the wider analysis parameters
-that the wizard does not -- analysis type (standard vs iterative),
-hex resolutions, time periods, parametrization, model-selection mode --
-through a sequence of stdin prompts. Each prompt has a typed default so
-non-interactive callers (or the orchestrator's CI path) get a sensible
-configuration without raising.
+The :class:`InteractiveConfig` collects the run parameters through a
+sequence of stdin prompts -- analysis type (standard vs iterative), levels
+(res3 / adm1), the analysis window / period, and the calling confidence.
+Each prompt has a typed default so non-interactive callers (or the
+orchestrator's CI path) get a sensible configuration without raising.
 """
 
 from __future__ import annotations

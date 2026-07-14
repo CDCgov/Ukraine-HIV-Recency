@@ -1,6 +1,5 @@
 """
-:class:`BaseHotspotAnalyzer` -- the shared facade used by both the
-standard Bayesian and the covariates analysers.
+:class:`BaseHotspotAnalyzer` -- the shared base for the Bayesian detector.
 
 Almost every public method here is a thin delegation to a
 ``pipeline.*`` helper; the class exists so existing call sites
@@ -11,12 +10,9 @@ are the IO caches (``_cached_cases`` / ``_cached_geodata``) with
 file-mtime invalidation and the per-instance ``diagnostics`` log
 that downstream code appends to after each fit.
 
-Subclass identity is exposed via the ``MODEL_TYPE`` class
-attribute (``'bayesian'`` / ``'bayesian_covariates'``) so this
-module can route to the right output subtree without taking an
-import on the subclasses (avoids the circular import that
-``isinstance(self, BayesianAnalyzer)`` would force once the
-classes live in their own modules).
+Model identity is exposed via the ``MODEL_TYPE`` class attribute
+(``'bayesian'``) so this module can route to the output subtree without
+importing the subclass.
 """
 
 from __future__ import annotations
@@ -484,16 +480,11 @@ class BaseHotspotAnalyzer:
             return
 
         logger.debug(f"save_report called for {level_name}")
-        logger.debug(f"gdf_admin columns: {list(gdf_admin.columns)}")
-        logger.debug(f"high_outbreak in gdf_admin: {'high_outbreak' in gdf_admin.columns}")
 
         active = gdf_admin[gdf_admin['all_tested_curr'] > 0].copy()
         if active.empty:
             logger.warning(f"No data to save for {level_name}")
             return
-
-        logger.debug(f"active columns after filter: {list(active.columns)}")
-        logger.debug(f"high_outbreak in active: {'high_outbreak' in active.columns}")
 
         is_hex = 'Hex' in level_name
 
