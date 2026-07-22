@@ -40,7 +40,7 @@ def run_interactive_setup(config: Dict[str, Any]) -> str:
     config['analysis_type'] = analysis_type
 
     if analysis_type == 'iterative':
-        # Iterative mode: one or more levels (res3/res4/adm1), each swept
+        # Iterative mode: one or more levels (res3/adm1), each swept
         # separately, plus the analysis-window length (baseline derived).
         levels = InteractiveConfig.choose_levels()
         iter_am = InteractiveConfig.choose_iterative_analysis_window()
@@ -58,13 +58,15 @@ def run_interactive_setup(config: Dict[str, Any]) -> str:
             'end': end.strftime('%Y-%m-%d')
         }
 
+        config.setdefault('detection', {})['confidence_level'] = InteractiveConfig.choose_confidence_level()
+
         logger.info(f"Iterative mode: data {start.strftime('%Y-%m-%d')} to {end.strftime('%Y-%m-%d')}")
         logger.info("  - Model: Bayesian non-centered only")
         logger.info(f"  - Levels: {levels}")
         logger.info(f"  - Window: {iter_am}-month analysis (baseline derived), 1-month step")
         return 'iterative'
 
-    # Standard (single-window) mode: choose one or more levels (res3/res4/adm1).
+    # Standard (single-window) mode: choose one or more levels (res3/adm1).
     levels = InteractiveConfig.choose_levels()
     config['analysis_levels'] = levels
     config['hex_resolutions'] = [lv for lv in levels if isinstance(lv, int)]
@@ -77,16 +79,14 @@ def run_interactive_setup(config: Dict[str, Any]) -> str:
         'end': end.strftime('%Y-%m-%d')
     }
 
-    parametrization = InteractiveConfig.choose_parametrization()
-    config['bayesian_parametrization'] = parametrization
+    config.setdefault('detection', {})['confidence_level'] = InteractiveConfig.choose_confidence_level()
 
-    model_selection = InteractiveConfig.choose_model_selection()
-    config['manual_model_selection'] = model_selection
-    if model_selection != 'auto':
-        _labels = {
-            'bayesian': 'Bayesian only',
-            'bayesian_covariates': 'Bayesian with Covariates only',
-        }
-        logger.info(f"[OK] Manual model selection: {_labels[model_selection]}")
+    # Parametrization is not prompted: with bayesian.auto_select_parametrization
+    # (on by default) the pipeline picks non-centered vs centered from the data
+    # (territory count and average tests), overriding any manual choice. Seed the
+    # default; the auto-selector decides.
+    config['bayesian_parametrization'] = 'non_centered'
+
+    logger.info("[OK] Model: two-period Bayesian detector")
 
     return start.strftime('%Y%m')

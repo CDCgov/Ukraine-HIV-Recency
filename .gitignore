@@ -68,3 +68,16 @@ Thumbs.db
 # Safe to commit
 !data/Ukraine_Adm*.geojson
 !data/README.md
+
+# Synthetic test dataset — fully synthetic, safe to commit (see synthetic_data/README.md).
+# It lives in the input folder (data/) as a stand-in for the real data. Only this one
+# file is un-ignored; the real data/input_data.xlsx, the generated
+# data/synthetic_input_data_double.xlsx, and the aggregate CSVs stay ignored.
+!data/synthetic_input_data.xlsx
+
+# validation run artifacts
+validation/sim_recs.pkl
+validation/threshold_simulation_results.txt
+
+# Private draft correspondence (never publish to the public repo)
+jim_correspondence/

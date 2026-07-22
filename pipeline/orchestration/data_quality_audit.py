@@ -6,7 +6,7 @@ stage on the audit trail before any modelling begins. Two
 substages -- structural-zeros analysis and sample-size assessment
 -- record their thresholded decisions on the trail so the eventual
 DecisionAuditTrail report explains why a particular prior
-strength or hurdle preference was chosen. The numbers (n_active,
+strength was chosen. The numbers (n_active,
 pct_structural_zeros, mean tests) are also computed downstream
 for the wizard, so this block is fire-and-forget: it mutates the
 audit trail and returns nothing.
@@ -54,9 +54,9 @@ def assess_data_quality(audit_trail: Any, gdf: gpd.GeoDataFrame) -> None:
         test_name="Structural Zeros Percentage",
         test_type="threshold",
         result=f"{pct_structural_zeros:.1f}% territories have zero tests ({n_structural_zeros}/{n_territories})",
-        decision="Consider Hurdle model" if pct_structural_zeros > 70 else "Standard model adequate",
-        reason=f"Threshold: 70%. Current: {pct_structural_zeros:.1f}%. High proportion of structural zeros requires special handling.",
-        impact="Hurdle model explicitly models excess zeros" if pct_structural_zeros > 70 else "Standard models can handle this level of zeros",
+        decision="Rely on the presence gate for zero-event units" if pct_structural_zeros > 70 else "Standard handling adequate",
+        reason=f"Threshold: 70%. Current: {pct_structural_zeros:.1f}%. A high proportion of structural zeros needs explicit handling of zero-event units.",
+        impact="The Beta-Binomial hierarchical model shrinks sparse units, and the presence gate excludes zero-event units from hotspot calls" if pct_structural_zeros > 70 else "The hierarchical model handles this level of zeros without special measures",
         details={'n_structural_zeros': n_structural_zeros, 'n_territories': n_territories, 'threshold': 70.0},
         substage_name="Structural Zeros Analysis"
     )

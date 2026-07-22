@@ -8,6 +8,7 @@ from pipeline.orchestration.model_comparison_entry import build_model_comparison
 from pipeline.orchestration.config_paths import resolve_paths
 from pipeline.orchestration.config_validation import validate_config
 from pipeline.orchestration.recommendations import generate_recommendations
+from pipeline.orchestration.group_attribution_report import generate_group_attribution_report
 from pipeline.orchestration.interactive_setup import run_interactive_setup
 from pipeline.orchestration.calibrate_min_tests import calibrate_min_tests
 from pipeline.orchestration.calibrate_sigma_multipliers import calibrate_sigma_multipliers
@@ -24,11 +25,7 @@ from pipeline.orchestration.iterative_loop import run_iterative_loop
 from pipeline.orchestration.bayesian_dispatch import run_bayesian_dispatch
 from pipeline.orchestration.interpret_bayesian import interpret_bayesian_diagnostics
 from pipeline.orchestration.bayesian_plots import create_bayesian_plots
-from pipeline.orchestration.interpret_bayesian_covariates import interpret_bayesian_covariates_diagnostics
-from pipeline.orchestration.bayesian_covariates_plots import create_bayesian_covariates_plots
-from pipeline.orchestration.bayesian_covariates_dispatch import run_bayesian_covariates_dispatch
 from pipeline.orchestration.finalize_model_choice import finalize_model_choice
-from pipeline.orchestration.comparison_report import generate_comparison_report
 
 __all__ = [
     "check_diagnostics",
@@ -39,6 +36,7 @@ __all__ = [
     "resolve_paths",
     "validate_config",
     "generate_recommendations",
+    "generate_group_attribution_report",
     "run_interactive_setup",
     "calibrate_min_tests",
     "calibrate_sigma_multipliers",
@@ -56,9 +54,5 @@ __all__ = [
     "run_bayesian_dispatch",
     "interpret_bayesian_diagnostics",
     "create_bayesian_plots",
-    "interpret_bayesian_covariates_diagnostics",
-    "create_bayesian_covariates_plots",
-    "run_bayesian_covariates_dispatch",
     "finalize_model_choice",
-    "generate_comparison_report",
 ]

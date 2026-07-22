@@ -106,8 +106,6 @@ def generate_recommendations(cfg, output_dir, recommendations_path, is_hotspot_f
     for subdir in ['admin', 'hex']:
         bayesian_reports = output_dir / 'bayesian' / subdir / 'Report_*.xlsx'
         report_files.extend(glob.glob(str(bayesian_reports)))
-        bayesian_cov_reports = output_dir / 'bayesian_covariates' / subdir / 'Report_*.xlsx'
-        report_files.extend(glob.glob(str(bayesian_cov_reports)))
 
     all_hotspots = []
 
@@ -115,28 +113,12 @@ def generate_recommendations(cfg, output_dir, recommendations_path, is_hotspot_f
         try:
             df = pd.read_excel(report_file)
 
-            # Filter hotspots
-            # Traditional: classification == 'Obvious Increase'
-            # Bayesian Covariates: high_outbreak or low_outbreak
+            # Hotspots from the detector's classification axis.
             hotspots = pd.DataFrame()
-
             if 'classification' in df.columns and 'combined_z' in df.columns:
                 hotspots_traditional = df[is_hotspot_fn(df)].copy()
                 if len(hotspots_traditional) > 0:
                     hotspots = pd.concat([hotspots, hotspots_traditional], ignore_index=True)
-
-            # Check for Bayesian Covariates outbreaks
-            if 'high_outbreak' in df.columns:
-                hotspots_high = df[df['high_outbreak'] == True].copy()
-                if len(hotspots_high) > 0:
-                    hotspots_high['outbreak_type'] = 'HIGH-RISK GROUP'
-                    hotspots = pd.concat([hotspots, hotspots_high], ignore_index=True)
-
-            if 'low_outbreak' in df.columns:
-                hotspots_low = df[df['low_outbreak'] == True].copy()
-                if len(hotspots_low) > 0:
-                    hotspots_low['outbreak_type'] = 'LOW-RISK GROUP'
-                    hotspots = pd.concat([hotspots, hotspots_low], ignore_index=True)
 
             if len(hotspots) > 0:
                 # Determine level from filename
@@ -219,15 +201,6 @@ def generate_recommendations(cfg, output_dir, recommendations_path, is_hotspot_f
             z_score = row.get('combined_z', 0)
             deviation = row.get('deviation_pct', 0)
 
-            # Outbreak type (if from Bayesian Covariates)
-            if 'outbreak_type' in row and pd.notna(row['outbreak_type']):
-                recommendations.append(f"   OUTBREAK TYPE: {row['outbreak_type']}")
-                if 'high_observed_curr' in row and pd.notna(row['high_observed_curr']):
-                    recommendations.append(f"   High-risk group: {row['high_observed_curr']*100:.1f}% (expected max: {row.get('high_ci_upper', 0)*100:.1f}%)")
-                if 'low_observed_curr' in row and pd.notna(row['low_observed_curr']):
-                    recommendations.append(f"   Low-risk group: {row['low_observed_curr']*100:.1f}% (expected max: {row.get('low_ci_upper', 0)*100:.1f}%)")
-                recommendations.append("")
-
             recommendations.append(f"   Tests: {int(n_tests)}")
             recommendations.append(f"   Recent infections: {int(n_recent)} ({prop*100:.1f}%)")
             recommendations.append(f"   National baseline: {national*100:.1f}%")
@@ -256,8 +229,6 @@ def generate_recommendations(cfg, output_dir, recommendations_path, is_hotspot_f
     for subdir in ['admin', 'hex']:
         bayesian_diag_path = output_dir / 'bayesian' / subdir / 'Diagnostics_*.xlsx'
         diag_files.extend(glob.glob(str(bayesian_diag_path)))
-        bayesian_cov_diag_path = output_dir / 'bayesian_covariates' / subdir / 'Diagnostics_*.xlsx'
-        diag_files.extend(glob.glob(str(bayesian_cov_diag_path)))
 
     # Collect diagnostics by category
     admin_diagnostics = {}
@@ -380,7 +351,7 @@ def generate_recommendations(cfg, output_dir, recommendations_path, is_hotspot_f
         recommendations.append("=" * 80)
         recommendations.append("")
 
-        hex_order = ['Hex_Res3', 'Hex_Res4']
+        hex_order = ['Hex_Res3']
         hex_quality = {}
 
         for level in hex_order:
@@ -435,19 +406,9 @@ def generate_recommendations(cfg, output_dir, recommendations_path, is_hotspot_f
                 recommendations.append(f"→ USE {best_level.upper()} WITH CAUTION")
                 recommendations.append(f"  Reason: Acceptable fit, but verify clusters manually")
             else:
-                # All resolutions poor - recommend coarser resolution
-                if best_level == 'Hex_Res4':
-                    recommendations.append(f"→ RES4 FAILED - TRY RES3 (COARSER)")
-                    recommendations.append(f"  Reason: Insufficient data at this resolution")
-                else:
-                    recommendations.append(f"→ ALL RESOLUTIONS SHOW POOR FIT")
-                    recommendations.append(f"  Reason: Consider using administrative units instead")
-
-            # Specific recommendations for failed resolutions
-            for level in hex_order:
-                if level in hex_quality and hex_quality[level] < 2:
-                    if level == 'Hex_Res4' and 'Hex_Res3' in hex_quality:
-                        recommendations.append(f"  [WARN]  Res4 unreliable → Use Res3 instead")
+                # Poor fit at res3 - suggest administrative units instead
+                recommendations.append(f"→ POOR FIT AT RES3")
+                recommendations.append(f"  Reason: Consider using administrative units instead")
 
         recommendations.append("")
 

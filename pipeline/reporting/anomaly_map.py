@@ -26,6 +26,7 @@ import pandas as pd
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
+from pipeline.constants import MAP_STRINGS_UA
 from pipeline.reporting.oblast_labels import add_oblast_labels
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ def render_anomaly_map(cfg, national_baseline_rate, gdf_oblast_opt, output_path,
         logger.warning(f"No data for {level_name} map")
         return None
 
-    ua = cfg.get('map_strings_ua', {}) if lang == 'ua' else {}
+    ua = cfg.get('map_strings_ua', MAP_STRINGS_UA) if lang == 'ua' else {}
 
     fig, ax = plt.subplots(figsize=(14, 14))
     cmap = cfg['color_map']
@@ -153,6 +154,28 @@ def render_anomaly_map(cfg, national_baseline_rate, gdf_oblast_opt, output_path,
             title += f"\nNational baseline: {national_baseline_rate:.4f}"
     plt.title(title, fontsize=14, fontweight='bold')
     ax.set_axis_off()
+
+    # Standing caveat footnote (text only -- colours and labels are unchanged).
+    # Recent events are sparse, so nearly every territory is low-reliability; the
+    # map is a triage signal, not a precise or population-level prevalence map.
+    if lang == 'ua':
+        caveat = ("Обережно: точки — заклади тестування, не місце проживання. "
+                  "Недавніх подій мало, тож майже всі території низьконадійні: "
+                  "карта є сигналом для пріоритезації, а не точним виміром.")
+    else:
+        caveat = ("Caveat: points are testing facilities, not patient residence. "
+                  "Recent events are sparse, so nearly all territories are "
+                  "low-reliability -- read this map as a triage signal, not a "
+                  "precise or population-level prevalence map.")
+    # Anchor the caveat directly beneath the MAP axes (axes fraction), not at the
+    # figure bottom. Ukraine is ~2:1 wide, so equal-aspect shrinks the axes into a
+    # centred band; a figure-bottom caption would sit far below the map with an
+    # empty letterbox between them. Anchoring to the axes keeps it flush under the
+    # map, and bbox_inches='tight' then trims the surrounding whitespace.
+    ax.annotate(caveat, xy=(0.5, -0.01), xycoords='axes fraction',
+                ha='center', va='top', fontsize=7, style='italic', wrap=True,
+                bbox=dict(boxstyle='round', facecolor='#fff3cd',
+                          edgecolor='#e0a800', alpha=0.85))
 
     try:
         plt.savefig(output_path, dpi=300, bbox_inches='tight')

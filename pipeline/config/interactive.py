@@ -1,12 +1,11 @@
 """
 Interactive configuration prompts.
 
-The :class:`InteractiveConfig` collects the wider analysis parameters
-that the wizard does not -- analysis type (standard vs iterative),
-hex resolutions, time periods, parametrization, model-selection mode --
-through a sequence of stdin prompts. Each prompt has a typed default so
-non-interactive callers (or the orchestrator's CI path) get a sensible
-configuration without raising.
+The :class:`InteractiveConfig` collects the run parameters through a
+sequence of stdin prompts -- analysis type (standard vs iterative), levels
+(res3 / adm1), the analysis window / period, and the calling confidence.
+Each prompt has a typed default so non-interactive callers (or the
+orchestrator's CI path) get a sensible configuration without raising.
 """
 
 from __future__ import annotations
@@ -33,10 +32,10 @@ class InteractiveConfig:
         print("ANALYSIS TYPE")
         print("=" * 60)
         print("1 - Standard analysis (single time period, all models)")
-        print("2 - Iterative hotspot search (sliding window, Bayesian only, Res4)")
+        print("2 - Iterative hotspot search (sliding window, Bayesian only, Res3)")
         print()
         print("Iterative mode:")
-        print("  - Runs Bayesian non-centered model on Res4 hexagons")
+        print("  - Runs Bayesian non-centered model on Res3 hexagons")
         print("  - 3-month analysis period, 12-month baseline")
         print("  - Steps backward 1 month at a time through entire dataset")
         print("  - Generates aggregated hotspots report")
@@ -51,54 +50,34 @@ class InteractiveConfig:
             print("Invalid choice. Please try again.")
 
     @staticmethod
-    def choose_hex_resolutions() -> List[int]:
-        """Prompt for which H3 resolutions to analyse (res3, res4, or both)."""
-        print("\n" + "=" * 60)
-        print("H3 HEXAGON RESOLUTIONS")
-        print("=" * 60)
-        print("1 - res3 only")
-        print("2 - res4 only")
-        print("3 - res3 + res4")
-
-        res_map = {
-            '1': [3],
-            '2': [4],
-            '3': [3, 4]
-        }
-
-        while True:
-            choice = input("Enter your choice (1/2/3): ").strip()
-            if choice in res_map:
-                return res_map[choice]
-            print("Invalid choice. Please enter 1, 2, or 3.")
-
-    @staticmethod
     def choose_levels() -> List:
-        """Choose one or more analysis levels: res3, res4, adm1 (oblasts).
+        """Choose one or more analysis levels: res3 hexagons and/or adm1 oblasts.
 
-        Returns a list mixing H3 resolution integers (3, 4) and the string
-        'Oblast' for ADM1, in the canonical order res3, res4, adm1. Any
-        combination is allowed; each selected level is analysed separately.
+        Returns a list mixing the H3 resolution integer 3 and the string
+        'Oblast' for ADM1, in the canonical order res3, adm1. The pipeline
+        standardised on res3 for the hexagon unit; finer resolutions are not
+        offered because most finer hexes hold zero or one active site.
         """
         print("\n" + "=" * 60)
         print("ANALYSIS LEVELS")
         print("=" * 60)
-        print("res3 - coarse H3 hexagons")
-        print("res4 - fine H3 hexagons")
-        print("adm1 - administrative oblasts (coarsest; more events per unit)")
-        print("Enter any combination, comma-separated. Examples:")
-        print("  res4            res3,res4            res4,adm1            res3,res4,adm1")
+        print("1 - res3       H3 hexagons (larger unit, more facilities per hexagon)")
+        print("2 - adm1       administrative oblasts (coarsest; most events per unit)")
+        print("3 - res3,adm1  both")
+        print("Enter an index (1/2/3), or the names comma-separated (e.g. res3,adm1).")
 
-        mapping = {'res3': 3, 'res4': 4, 'adm1': 'Oblast'}
-        order = ['res3', 'res4', 'adm1']
+        mapping = {'res3': 3, 'adm1': 'Oblast'}
+        order = ['res3', 'adm1']
+        index_map = {'1': ['res3'], '2': ['adm1'], '3': ['res3', 'adm1']}
         while True:
-            raw = input("\nLevels [default: res4]: ").strip().lower()
+            raw = input("\nLevels [default: 3 = res3,adm1]: ").strip().lower()
             if raw == '':
-                return [4]
-            tokens = [t.strip() for t in raw.split(',') if t.strip()]
+                return [3, 'Oblast']
+            tokens = index_map[raw] if raw in index_map else \
+                [t.strip() for t in raw.split(',') if t.strip()]
             if tokens and all(t in mapping for t in tokens):
                 return [mapping[t] for t in order if t in tokens]
-            print("Invalid choice. Use res3, res4, adm1 (comma-separated).")
+            print("Invalid choice. Enter 1, 2 or 3, or names like res3,adm1.")
 
     @staticmethod
     def choose_iterative_analysis_window() -> int:
@@ -126,6 +105,32 @@ class InteractiveConfig:
             if choice in ('6', '9', '12'):
                 return int(choice)
             print("Invalid choice. Please enter 3, 6, 9 or 12.")
+
+    @staticmethod
+    def choose_confidence_level() -> float:
+        """Prompt for the posterior-probability confidence level for hotspot calls.
+
+        A hotspot is called when the posterior probability that a cell exceeds
+        the national rate clears this level (FDR-controlled). The default 0.80 is
+        the Richardson et al. (2004) disease-mapping decision rule D(0.8, 1) and
+        was confirmed as the sensitivity/false-positive knee by a simulation on
+        the real site volumes. 0.85-0.95 are progressively more conservative
+        (fewer false alerts, lower sensitivity on sparse counts). The presence
+        gate (>=2 recent events) holds at every level, so no single-event cell is
+        ever flagged.
+        """
+        print("\n" + "=" * 60)
+        print("CONFIDENCE LEVEL (hotspot calls)")
+        print("=" * 60)
+        print("80 - Richardson D(0.8,1) rule; simulation-calibrated (recommended)")
+        print("85 - near-zero false alerts, slightly lower sensitivity")
+        print("90 / 95 - conservative confirmatory bars")
+        while True:
+            choice = input("\nEnter your choice (80/85/90/95) [default: 80]: ").strip()
+            mapping = {'': 0.80, '80': 0.80, '85': 0.85, '90': 0.90, '95': 0.95}
+            if choice in mapping:
+                return mapping[choice]
+            print("Invalid choice. Please enter 80, 85, 90 or 95.")
 
     @staticmethod
     def choose_analysis_period() -> Tuple[pd.Timestamp, pd.Timestamp]:
@@ -177,52 +182,6 @@ class InteractiveConfig:
             return start, end
 
     @staticmethod
-    def choose_iterative_resolution() -> int:
-        """Prompt for the single H3 resolution used in iterative mode.
-
-        Iterative mode analyses one resolution at a time. res3 gives coarser,
-        larger hexagons (more tests per cell -> higher reliability, less
-        spatial detail); res4 gives finer hexagons (more detail, lower
-        reliability on sparse data).
-        """
-        print("\n" + "=" * 60)
-        print("ITERATIVE H3 RESOLUTION")
-        print("=" * 60)
-        print("3 - res3 (coarser: more tests per hexagon, higher reliability)")
-        print("4 - res4 (finer: more spatial detail, lower reliability)")
-
-        while True:
-            choice = input("\nEnter your choice (3/4) [default: 4]: ").strip()
-            if choice == '' or choice == '4':
-                return 4
-            if choice == '3':
-                return 3
-            print("Invalid choice. Please enter 3 or 4.")
-
-    @staticmethod
-    def choose_period() -> Tuple[pd.Timestamp, pd.Timestamp]:
-        """Prompt for the analysis window; re-asks until end is after start."""
-        print("\n" + "=" * 60)
-        print("ANALYSIS PERIOD")
-        print("=" * 60)
-
-        while True:
-            try:
-                start_str = input("Start date (YYYY-MM-DD): ").strip()
-                end_str = input("End date (YYYY-MM-DD): ").strip()
-
-                start = pd.to_datetime(start_str)
-                end = pd.to_datetime(end_str)
-
-                if start >= end:
-                    print("Error: Start date must be before end date. Please try again.")
-                    continue
-
-                return start, end
-            except ValueError as e:
-                print(f"Error parsing dates: {e}. Please use YYYY-MM-DD format.")
-
-    @staticmethod
     def choose_iterative_date_range() -> Tuple[pd.Timestamp, pd.Timestamp]:
         """Choose date range for iterative analysis."""
         print("\n" + "=" * 60)
@@ -256,54 +215,6 @@ class InteractiveConfig:
                 return start, end
             except ValueError as e:
                 print(f"Error parsing dates: {e}. Please use YYYY-MM-DD format.")
-
-    @staticmethod
-    def choose_parametrization() -> str:
-        """Prompt for non-centered (default) vs centered parametrization."""
-        print("\n" + "=" * 60)
-        print("BAYESIAN PARAMETRIZATION")
-        print("=" * 60)
-        print("1 - Non-centered (default, recommended)")
-        print("2 - Centered (for large samples only)")
-        print("\nInfo:")
-        print("  Non-centered: Better for small samples, reduces divergences (RECOMMENDED)")
-        print("  Centered: Standard parametrization, only for large samples (>50 territories)")
-        print("  Note: System will auto-select based on data if configured")
-
-        while True:
-            choice = input("\nEnter your choice (1/2) [default: 1]: ").strip()
-            if choice == '' or choice == '1':
-                return 'non_centered'
-            elif choice == '2':
-                return 'centered'
-            print("Invalid choice. Please try again.")
-
-    @staticmethod
-    def choose_model_selection() -> str:
-        """Choose model to run: auto, bayesian, or bayesian_covariates."""
-        print("\n" + "=" * 60)
-        print("MODEL SELECTION")
-        print("=" * 60)
-        print("\n1 - Auto (recommended — system selects based on data)")
-        print("2 - Bayesian only (hierarchical, no covariates)")
-        print("3 - Bayesian with Covariates (stratified risk groups)")
-        print("\nInfo:")
-        print("  Auto:             Runs spec analysis, picks best model automatically")
-        print("  Bayesian only:    Best for sparse data, many zeros, small N")
-        print("  Bayesian Cov:     Accounts for risk-group composition differences")
-
-        while True:
-            try:
-                choice = input("\nEnter your choice (1/2/3) [default: 1]: ").strip()
-                if choice == '' or choice == '1':
-                    return 'auto'
-                elif choice == '2':
-                    return 'bayesian'
-                elif choice == '3':
-                    return 'bayesian_covariates'
-                print("Invalid choice. Please enter 1, 2, or 3.")
-            except (EOFError, KeyboardInterrupt):
-                return 'auto'
 
     @staticmethod
     def ask_overwrite_config(config_path: str) -> bool:

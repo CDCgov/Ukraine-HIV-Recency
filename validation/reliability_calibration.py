@@ -47,7 +47,7 @@ def reliability_cell(n_tests: int, true_smr: float, national_rate: float,
     updated by Binomial recent/tested counts; the SMR posterior is the rate
     posterior divided by the national rate. Returns the mean reliability
     score, the mean SMR CI width, and the fraction of replicates whose 95% CI
-    is decisive about the SMR = 2 threshold.
+    is decisive about the parity (rate > national) threshold.
     """
     p_true = min(national_rate * true_smr, 0.99)
     recent = rng.binomial(n_tests, p_true, size=reps)
@@ -66,7 +66,7 @@ def reliability_cell(n_tests: int, true_smr: float, national_rate: float,
 
     smr_lo = p_lo / national_rate
     smr_hi = p_hi / national_rate
-    decisive = (smr_lo > 2.0) | (smr_hi < 2.0)
+    decisive = (smr_lo > 1.0) | (smr_hi < 1.0)
 
     smr_ci_width = (p_hi - p_lo) / national_rate
     return score, smr_ci_width, decisive
@@ -74,7 +74,7 @@ def reliability_cell(n_tests: int, true_smr: float, national_rate: float,
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Reliability-score calibration study")
-    parser.add_argument('--national-rate', type=float, default=0.02,
+    parser.add_argument('--national-rate', type=float, default=0.015,
                         help='National recency proportion (default 0.02, ~ the project level)')
     parser.add_argument('--prior-k', type=float, default=20.0,
                         help='EB prior concentration K (default 20, the pipeline default)')
@@ -89,7 +89,7 @@ def main() -> None:
     print(f"Reliability-score calibration  |  national_rate={args.national_rate}  "
           f"prior K={args.prior_k}  |  {args.reps} reps/cell")
     print("Score = 100*exp(-CV) of the SMR posterior; tiers HIGH>=80, MODERATE>=60, LOW<60.")
-    print("Decisive = 95% CI lies entirely above or below the SMR=2 hotspot threshold.")
+    print("Decisive = 95% CI lies entirely above or below the national rate (parity threshold).")
     print("=" * 92)
     header = f"{'true SMR':>9}{'tests':>8}{'mean score':>12}{'tier':>10}{'SMR CI width':>14}{'decisive':>10}"
     print(header)

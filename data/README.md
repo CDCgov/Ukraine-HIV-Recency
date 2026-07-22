@@ -5,6 +5,11 @@ the case data file is placed locally. **The case data file is not part of
 this repository** — it is git-ignored and shared with authorised
 collaborators separately.
 
+> **No access to the case file?** A fully synthetic alternative can be
+> generated with the notebook in [`../synthetic_data/`](../synthetic_data/),
+> which produces `synthetic_input_data_double.xlsx` here for end-to-end testing
+> without any real data.
+
 ## Files
 
 ### 1. Case data — `input_data.xlsx` (NOT in the repository)
@@ -38,9 +43,10 @@ in the case sheet, and none are required.
 
 ### 2. H3 hexagon grid (in the repository)
 
-- `h3_hexagons_res4.geojson` — primary analysis grid (Res4)
-- `h3_hexagons_res3.geojson` / `h3_hexagons_res5.geojson` — optional
-  coarser / finer grids
+- `h3_hexagons_res3.geojson` — the analysis grid (the pipeline standardised
+  on res3: larger hexagons, more testing facilities per unit)
+- `h3_hexagons_res4.geojson` / `h3_hexagons_res5.geojson` — finer grids kept
+  for reference only; not used by the current pipeline
 
 GeoJSON with an `h3_id` property and `geometry` (hexagon polygons). Public,
 non-sensitive geometry.

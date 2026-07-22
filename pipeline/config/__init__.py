@@ -1,6 +1,5 @@
-"""Interactive configuration wizard + per-parameter prompts."""
+"""Interactive configuration prompts."""
 
-from pipeline.config.wizard import ModelConfigurationWizard
 from pipeline.config.interactive import InteractiveConfig
 
-__all__ = ["ModelConfigurationWizard", "InteractiveConfig"]
+__all__ = ["InteractiveConfig"]

@@ -23,14 +23,13 @@ import pipeline.bootstrap  # noqa: F401 -- side-effect import
 import argparse
 import json
 import logging
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
 from pipeline.analyzers import BayesianAnalyzer  # noqa: F401 -- re-exported for test_convergence_gate
 from pipeline.config import InteractiveConfig
-from pipeline.constants import DEFAULT_CONFIG
+from pipeline.constants import DEFAULT_CONFIG  # noqa: F401 -- re-exported for test_convergence_gate
 from pipeline.logging_setup import check_compiler_availability, setup_logging
 from pipeline.orchestrator import PipelineOrchestrator
 
@@ -42,14 +41,6 @@ def main():
     parser = argparse.ArgumentParser(description="HIV Hotspot Detection Pipeline")
     parser.add_argument('--test', action='store_true', help='Run in test mode with default config')
     parser.add_argument('config', nargs='?', type=str, default=None, help='Path to config file')
-
-    # Model selection arguments
-    parser.add_argument('--use-loo-ic', action='store_true', default=False,
-                       help='Use LOO-IC for model selection instead of heuristic scoring')
-    parser.add_argument('--use-hurdle', action='store_true', default=False,
-                       help='Use Hurdle Binomial model for sparse data with structural zeros')
-    parser.add_argument('--hurdle-threshold', type=float, default=70.0,
-                       help='Percentage of structural zeros to trigger Hurdle model (default: 70.0)')
 
     # Logging configuration arguments
     parser.add_argument('--log-stdout', action='store_true', default=True,
@@ -85,20 +76,19 @@ def main():
     output_base = log_dir
 
     if args.test:
-        config_path = 'config_universal.json' if os.path.exists('config_universal.json') else None
-        orchestrator = PipelineOrchestrator(config_path, run_timestamp=timestamp,
-                                           output_base=output_base, use_loo_ic=args.use_loo_ic,
-                                           use_hurdle=args.use_hurdle, hurdle_threshold=args.hurdle_threshold)
-        if not config_path:
-            orchestrator.config = DEFAULT_CONFIG.copy()
+        # Headless smoke run: no wizard. PipelineOrchestrator(None) loads
+        # DEFAULT_CONFIG, which IS config.json plus a default hex resolution (the
+        # one field the wizard would otherwise set), so --test exercises the exact
+        # production methodology from the single source of truth.
+        orchestrator = PipelineOrchestrator(None, run_timestamp=timestamp,
+                                           output_base=output_base)
         orchestrator.run_full_pipeline()
         logger.info("\nTEST MODE COMPLETED!")
         return
 
     config_path = args.config or (sys.argv[1] if len(sys.argv) > 1 else None)
     orchestrator = PipelineOrchestrator(config_path, run_timestamp=timestamp,
-                                       output_base=output_base, use_loo_ic=args.use_loo_ic,
-                                       use_hurdle=args.use_hurdle, hurdle_threshold=args.hurdle_threshold)
+                                       output_base=output_base)
 
     orchestrator.run_interactive_setup()
     if config_path and orchestrator.config.get('run_mode') != 'iterative':

@@ -44,6 +44,7 @@ def collect_dashboard_data(results: Dict[str, Any],
                 'Declining from high-burden': classifications.get('Declining from high-burden', 0),
                 'Emerging decrease': classifications.get('Emerging decrease', 0),
                 'Significant decrease': classifications.get('Significant decrease', 0),
+                'Elevated vs national (trend uncertain)': classifications.get('Elevated vs national (trend uncertain)', 0),
                 'Normal': classifications.get('Normal', 0),
                 'total': len(gdf),
             }

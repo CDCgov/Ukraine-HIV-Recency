@@ -29,7 +29,7 @@ MCMC fit per seed) and is not part of the routine pipeline.
 
 Run:
     python multiseed_stability.py                       # default config, seeds 42..46
-    python multiseed_stability.py config.json --seeds 1 2 3 4 5 --resolution 4
+    python multiseed_stability.py config.json --seeds 1 2 3 4 5 --resolution 3
 """
 from __future__ import annotations
 
@@ -159,7 +159,7 @@ def main() -> None:
     parser.add_argument('config', nargs='?', default=None, help='Config JSON (defaults to DEFAULT_CONFIG)')
     parser.add_argument('--seeds', type=int, nargs='+', default=[42, 43, 44, 45, 46],
                         help='Random seeds to compare (default: 42 43 44 45 46)')
-    parser.add_argument('--resolution', type=int, default=4, help='H3 resolution to fit (default: 4)')
+    parser.add_argument('--resolution', type=int, default=3, help='H3 resolution to fit (default: 3)')
     args = parser.parse_args()
 
     setup_logging(log_to_stdout=True, log_to_file=False, log_level='WARNING')

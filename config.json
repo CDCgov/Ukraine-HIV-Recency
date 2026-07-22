@@ -10,25 +10,14 @@
     "oblast_col": "ADM1_EN"
   },
   "h3_hexagons": {
-    "adm3_path": null,
-    "adm2_path": "data/h3_hexagons_res4.geojson",
-    "adm1_path": null,
-    "otg_col": "h3_id",
-    "rayon_col": "h3_id",
-    "oblast_col": "h3_id",
-    "h3_id_col": "h3_id",
-    "res5_path": null,
-    "res4_path": "data/h3_hexagons_res4.geojson",
     "res3_path": "data/h3_hexagons_res3.geojson",
-    "resolution_level3": 5,
-    "resolution_level2": 4,
-    "resolution_level1": 3
+    "h3_id_col": "h3_id"
   },
   "output_dir": "output",
   "target_crs": "EPSG:3857",
   "analysis_period": {
-    "start": "2026-02-01",
-    "end": "2026-04-30"
+    "start": "2026-03-01",
+    "end": "2026-05-31"
   },
   "residual_thresholds": {
     "obvious": 2.0,
@@ -46,6 +35,7 @@
     "Declining from high-burden": "#48cae4",
     "Emerging decrease": "#a0e0a8",
     "Significant decrease": "#06d6a0",
+    "Elevated vs national (trend uncertain)": "#c77dff",
     "Normal": "#d3d3d3",
     "No Data": "#ffffff"
   },
@@ -92,17 +82,17 @@
     "use_pydantic": true,
     "strict_types": true
   },
-  "reliability_weights": {
-    "data_adequacy": 40,
-    "sample_size": 30,
-    "model_quality": 30
-  },
   "detection": {
-    "smr_threshold": 2.0,
-    "sir_threshold": 1.5
+    "smr_threshold": 1.0,
+    "sir_threshold": 1.0,
+    "smr_low_threshold": 1.0,
+    "sir_low_threshold": 1.0,
+    "confidence_level": 0.80
   },
+  "smr_leave_one_out": true,
   "watchlist": {
     "burden_top_frac": 0.80,
     "rate_percentile": 0.80
-  }
+  },
+  "two_period_model": true
 }

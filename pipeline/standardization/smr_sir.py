@@ -88,6 +88,7 @@ def compute_smr_sir(p_samples,
                     smr_low_threshold: float = 0.5,
                     sir_low_threshold: float = 1.0 / 1.5,
                     national_rate_curr_floor: float = 1e-3,
+                    leave_one_out: bool = False,
                     ) -> Dict[str, Any]:
     """
     Build SMR / SIR posterior summaries and exceedance probabilities.
@@ -123,8 +124,10 @@ def compute_smr_sir(p_samples,
         ``P(SIR > sir_threshold)``, ``P(SMR < smr_low_threshold)`` and
         ``P(SIR < sir_low_threshold)``.
     """
-    recent_curr_total = float(df['recent_count_curr'].sum())
-    tested_curr_total = float(df['all_tested_curr'].sum())
+    recent_curr = df['recent_count_curr'].to_numpy(dtype=float)
+    tested_curr = df['all_tested_curr'].to_numpy(dtype=float)
+    recent_curr_total = float(recent_curr.sum())
+    tested_curr_total = float(tested_curr.sum())
     raw_national_curr = (recent_curr_total / tested_curr_total
                          if tested_curr_total > 0 else 0.0)
     national_rate_curr = max(raw_national_curr, national_rate_curr_floor)
@@ -134,6 +137,22 @@ def compute_smr_sir(p_samples,
             f"below floor {national_rate_curr_floor}; clamped -- "
             "SMR/SIR may be unstable, interpret with caution"
         )
+
+    # SMR denominator per territory. By default every territory is compared to
+    # the single pooled national rate. With leave_one_out, each territory is
+    # compared to a national rate that EXCLUDES its own counts, so a large city
+    # that contributes much of the national recent caseload can no longer partly
+    # mask itself in its own SMR denominator (a sensitivity analysis; reviewer
+    # concern). The SIR trend factor stays on the pooled national move, which is
+    # a genuinely national quantity.
+    if leave_one_out:
+        loo_num = recent_curr_total - recent_curr
+        loo_den = tested_curr_total - tested_curr
+        raw_loo = np.divide(loo_num, loo_den, out=np.zeros_like(loo_num),
+                            where=loo_den > 0)
+        smr_denom_vec = np.maximum(raw_loo, national_rate_curr_floor)
+    else:
+        smr_denom_vec = np.full(len(df), national_rate_curr)
 
     recent_hist = df['recent_count_hist'].values
     tested_hist = df['all_tested_hist'].values
@@ -159,7 +178,7 @@ def compute_smr_sir(p_samples,
     is_list = isinstance(p_samples, list)
     for i in range(n_t):
         p_i = np.asarray(p_samples[i] if is_list else p_samples[:, i])
-        smr_i = p_i / national_rate_curr
+        smr_i = p_i / smr_denom_vec[i]
         sir_i = p_i / sir_denom[i]
         smr_mean[i] = float(np.mean(smr_i))
         # Median is the more honest central estimate on the right-skewed SMR

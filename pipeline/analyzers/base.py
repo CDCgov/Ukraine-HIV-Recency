@@ -1,6 +1,5 @@
 """
-:class:`BaseHotspotAnalyzer` -- the shared facade used by both the
-standard Bayesian and the covariates analysers.
+:class:`BaseHotspotAnalyzer` -- the shared base for the Bayesian detector.
 
 Almost every public method here is a thin delegation to a
 ``pipeline.*`` helper; the class exists so existing call sites
@@ -11,12 +10,9 @@ are the IO caches (``_cached_cases`` / ``_cached_geodata``) with
 file-mtime invalidation and the per-instance ``diagnostics`` log
 that downstream code appends to after each fit.
 
-Subclass identity is exposed via the ``MODEL_TYPE`` class
-attribute (``'bayesian'`` / ``'bayesian_covariates'``) so this
-module can route to the right output subtree without taking an
-import on the subclasses (avoids the circular import that
-``isinstance(self, BayesianAnalyzer)`` would force once the
-classes live in their own modules).
+Model identity is exposed via the ``MODEL_TYPE`` class attribute
+(``'bayesian'``) so this module can route to the output subtree without
+importing the subclass.
 """
 
 from __future__ import annotations
@@ -31,20 +27,12 @@ import numpy as np
 import pandas as pd
 
 from pipeline.aggregation import (
-    aggregate_covariates as _aggregate_covariates,
     aggregate_stats as _aggregate_stats,
-    aggregate_stats_hard_stratified as _aggregate_stats_hard_stratified,
-    aggregate_stats_stratified as _aggregate_stats_stratified,
-    analyze_network_change as _analyze_network_change,
-    analyze_site_profile as _analyze_site_profile,
     calculate_national_baseline as _calculate_national_baseline,
     calculate_testing_intensity as _calculate_testing_intensity,
     classify_network_stability as _classify_network_stability,
-    detect_outbreak_and_artifact as _detect_outbreak_and_artifact,
     ensure_crs_match as _ensure_crs_match,
-    generate_network_explanation as _generate_network_explanation,
     get_periods as _get_periods,
-    soft_fallback_result as _soft_fallback_result,
 )
 from pipeline.classification import (
     classify_with_exceedance as _classify_with_exceedance,
@@ -86,7 +74,6 @@ class BaseHotspotAnalyzer:
         'District': 'District',
         'Oblast': 'Oblast',
         3: 'Hex_Res3',
-        4: 'Hex_Res4'
     }
 
     # Subclasses set this so get_output_path() can route to the right
@@ -128,15 +115,11 @@ class BaseHotspotAnalyzer:
         if orchestrator is None:
             # Only create directories if running standalone (no orchestrator)
             self.bayesian_out_dir = self.base_out_dir / 'bayesian' / mode_suffix
-            self.bayesian_cov_out_dir = self.base_out_dir / 'bayesian_covariates' / mode_suffix
-
             self.bayesian_out_dir.mkdir(parents=True, exist_ok=True)
-            self.bayesian_cov_out_dir.mkdir(parents=True, exist_ok=True)
         else:
             # When orchestrator exists, paths are managed dynamically
             # No need to create directories upfront
             self.bayesian_out_dir = None
-            self.bayesian_cov_out_dir = None
 
     @staticmethod
     def _ensure_crs_match(gdf_left: gpd.GeoDataFrame, gdf_right: gpd.GeoDataFrame,
@@ -150,8 +133,6 @@ class BaseHotspotAnalyzer:
         if self.orchestrator:
             raise RuntimeError("get_output_dir() should not be called when orchestrator exists. Use get_output_path() instead.")
 
-        if self.MODEL_TYPE == "bayesian_covariates":
-            return self.bayesian_cov_out_dir
         if self.MODEL_TYPE == "bayesian":
             return self.bayesian_out_dir
         return None
@@ -278,10 +259,6 @@ class BaseHotspotAnalyzer:
         """Thin wrapper around :func:`pipeline.io.load_testing_sites`."""
         return _load_testing_sites(excel_path)
 
-    def analyze_site_profile(self, site_id: str, gdf_cases: gpd.GeoDataFrame, b_start: pd.Timestamp, b_end: pd.Timestamp) -> Dict[str, Any]:
-        """Thin wrapper around :func:`pipeline.aggregation.analyze_site_profile`."""
-        return _analyze_site_profile(site_id, gdf_cases, b_start, b_end)
-
     def calculate_testing_intensity(self, gdf_cases: gpd.GeoDataFrame, start_date: pd.Timestamp, end_date: pd.Timestamp) -> Dict[str, Any]:
         """Thin wrapper around :func:`pipeline.aggregation.calculate_testing_intensity`."""
         return _calculate_testing_intensity(gdf_cases, start_date, end_date)
@@ -289,14 +266,6 @@ class BaseHotspotAnalyzer:
     def classify_network_stability(self, intensity_curr: float, intensity_hist: float, all_intensities_curr: np.ndarray, all_intensities_hist: np.ndarray) -> Dict[str, Any]:
         """Thin wrapper around :func:`pipeline.aggregation.classify_network_stability`."""
         return _classify_network_stability(intensity_curr, intensity_hist, all_intensities_curr, all_intensities_hist)
-
-    def analyze_network_change(self, territory_idx: int, gdf_admin: gpd.GeoDataFrame, gdf_cases: gpd.GeoDataFrame, df_sites: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp, b_start: pd.Timestamp, b_end: pd.Timestamp) -> Dict[str, Any]:
-        """Thin wrapper around :func:`pipeline.aggregation.analyze_network_change`."""
-        return _analyze_network_change(territory_idx, gdf_admin, gdf_cases, df_sites, start, end, b_start, b_end)
-
-    def generate_network_explanation(self, network_analysis: Dict[str, Any], stability: Dict[str, Any]) -> str:
-        """Thin wrapper around :func:`pipeline.aggregation.generate_network_explanation`."""
-        return _generate_network_explanation(network_analysis, stability)
 
     def calculate_national_baseline(self, gdf_cases: gpd.GeoDataFrame, b_start: pd.Timestamp, b_end: pd.Timestamp) -> Tuple[float, float]:
         """Thin wrapper around :func:`pipeline.aggregation.calculate_national_baseline`."""
@@ -317,7 +286,8 @@ class BaseHotspotAnalyzer:
                          sir_threshold: float = 1.5,
                          smr_low_threshold: float = 0.5,
                          sir_low_threshold: float = 1.0 / 1.5,
-                         national_rate_curr_floor: float = 1e-3):
+                         national_rate_curr_floor: float = 1e-3,
+                         leave_one_out: bool = False):
         """Thin wrapper around :func:`pipeline.standardization.smr_sir.compute_smr_sir`."""
         return compute_smr_sir(
             p_samples=p_samples,
@@ -328,6 +298,7 @@ class BaseHotspotAnalyzer:
             smr_low_threshold=smr_low_threshold,
             sir_low_threshold=sir_low_threshold,
             national_rate_curr_floor=national_rate_curr_floor,
+            leave_one_out=leave_one_out,
         )
 
     def aggregate_stats(self, gdf_admin: gpd.GeoDataFrame, gdf_cases: gpd.GeoDataFrame,
@@ -338,26 +309,6 @@ class BaseHotspotAnalyzer:
             self._testing_sites = _load_testing_sites(self.cfg['excel_path'])
         return _aggregate_stats(self.cfg, self._testing_sites, gdf_admin,
                                 gdf_cases, start, end, b_start, b_end)
-
-    def aggregate_covariates(self, gdf_admin: gpd.GeoDataFrame, gdf_cases: gpd.GeoDataFrame, start: pd.Timestamp, end: pd.Timestamp) -> gpd.GeoDataFrame:
-        """Thin wrapper around :func:`pipeline.aggregation.aggregate_covariates`."""
-        return _aggregate_covariates(gdf_admin, gdf_cases, start, end)
-
-    def aggregate_stats_stratified(self, gdf_admin: gpd.GeoDataFrame, gdf_cases: gpd.GeoDataFrame, start: pd.Timestamp, end: pd.Timestamp, b_start: pd.Timestamp, b_end: pd.Timestamp) -> pd.DataFrame:
-        """Thin wrapper around :func:`pipeline.aggregation.aggregate_stats_stratified`."""
-        return _aggregate_stats_stratified(gdf_admin, gdf_cases, start, end, b_start, b_end)
-
-    def aggregate_stats_hard_stratified(self, gdf_admin: gpd.GeoDataFrame, gdf_cases: gpd.GeoDataFrame, start: pd.Timestamp, end: pd.Timestamp, b_start: pd.Timestamp, b_end: pd.Timestamp) -> pd.DataFrame:
-        """Thin wrapper around :func:`pipeline.aggregation.aggregate_stats_hard_stratified`."""
-        return _aggregate_stats_hard_stratified(gdf_admin, gdf_cases, start, end, b_start, b_end)
-
-    def detect_outbreak_and_artifact(self, territory_idx: int, df_hard: pd.DataFrame, national_rate: float) -> Dict[str, Any]:
-        """Thin wrapper around :func:`pipeline.aggregation.detect_outbreak_and_artifact`."""
-        return _detect_outbreak_and_artifact(territory_idx, df_hard, national_rate)
-
-    def _get_soft_fallback_result(self) -> Dict[str, Any]:
-        """Thin wrapper around :func:`pipeline.aggregation.soft_fallback_result`."""
-        return _soft_fallback_result()
 
     def calculate_z_scores(self, df: pd.DataFrame, national_rate: float) -> pd.DataFrame:
         """Thin wrapper around :func:`pipeline.standardization.calculate_z_scores`."""
@@ -400,12 +351,12 @@ class BaseHotspotAnalyzer:
         FDR-controlled cut-offs, the two-axis ``classification_smr_sir`` label
         (and its alias ``classification``), the new-site flag, the national
         baseline and the percent deviation. It was copied verbatim into the
-        crude, hurdle and covariates fits; centralising it removes that
-        duplication. It is pure post-processing -- no sampling, no RNG -- so
-        the numbers are unchanged by where it lives.
+        crude and covariates fits; centralising it removes that duplication.
+        It is pure post-processing -- no sampling, no RNG -- so the numbers
+        are unchanged by where it lives.
 
         ``calculate_z_scores`` is intentionally left to the caller, since the
-        three fits compute it at slightly different points; it is independent
+        two fits compute it at slightly different points; it is independent
         of everything here.
         """
         # FDR threshold on the single-axis exceedance. The SMR/SIR taxonomy
@@ -420,11 +371,20 @@ class BaseHotspotAnalyzer:
                     f"FDR={bayesian_fdr:.1%}, {n_above} territories above threshold")
 
         # Each axis gets its own FDR-controlled cut-off so a call is made only
-        # when the posterior evidence is strong on that specific dimension.
-        cutoff_smr_high, _ = self._auto_threshold(df['exc_prob_smr'].dropna().values)
-        cutoff_sir_high, _ = self._auto_threshold(df['exc_prob_sir'].dropna().values)
-        cutoff_smr_low, _ = self._auto_threshold(df['exc_prob_smr_low'].dropna().values)
-        cutoff_sir_low, _ = self._auto_threshold(df['exc_prob_sir_low'].dropna().values)
+        # when the posterior evidence is strong on that specific dimension. The
+        # posterior-probability confidence level is configurable (detection.
+        # confidence_level). The default 0.80 is the Richardson et al. (2004)
+        # disease-mapping decision rule D(0.8, 1): flag an area when the posterior
+        # probability that its relative rate exceeds the reference is >= 0.80
+        # (Environ Health Perspect 112(9):1016-1025). A simulation on the real
+        # site volumes (validation/threshold_simulation.py) confirmed 0.80 as the
+        # sensitivity/false-positive knee on this sparse data. It anchors both the
+        # start and the floor so the FDR search never drops below it.
+        _conf = float((self.cfg or {}).get('detection', {}).get('confidence_level', 0.80))
+        cutoff_smr_high, _ = self._auto_threshold(df['exc_prob_smr'].dropna().values, start=_conf, floor=_conf)
+        cutoff_sir_high, _ = self._auto_threshold(df['exc_prob_sir'].dropna().values, start=_conf, floor=_conf)
+        cutoff_smr_low, _ = self._auto_threshold(df['exc_prob_smr_low'].dropna().values, start=_conf, floor=_conf)
+        cutoff_sir_low, _ = self._auto_threshold(df['exc_prob_sir_low'].dropna().values, start=_conf, floor=_conf)
         df['classification_smr_sir'] = df.apply(
             lambda row: self.classify_with_smr_sir(
                 row,
@@ -433,8 +393,7 @@ class BaseHotspotAnalyzer:
                 cutoff_smr_low=cutoff_smr_low,
                 cutoff_sir_low=cutoff_sir_low,
             ), axis=1)
-        # Single label set: the legacy single-axis classifier is retired
-        # (audit M4); `classification` aliases the taxonomy.
+        # `classification` aliases the two-axis SMR/SIR taxonomy label.
         df['classification'] = df['classification_smr_sir']
         # New sites (no historical testing) have an undefined trend axis; the
         # map marks them with an open circle rather than a colour class.
@@ -466,12 +425,18 @@ class BaseHotspotAnalyzer:
         )
         return df
 
-    def save_diagnostics(self, level_name: str, period_str: str):
-        """Thin wrapper around :func:`pipeline.reporting.save_diagnostics`."""
-        if not self.diagnostics:
+    def save_diagnostics(self, level_name: str, period_str: str, diagnostics_list=None):
+        """Thin wrapper around :func:`pipeline.reporting.save_diagnostics`.
+
+        ``diagnostics_list`` writes a specific set of diagnostics (e.g. just the
+        current level's) to this level's folder; without it the analyzer's whole
+        accumulated list is written.
+        """
+        diags = diagnostics_list if diagnostics_list is not None else self.diagnostics
+        if not diags:
             return
         diag_path = self.get_output_path(level_name, f"Diagnostics_{period_str}.xlsx")
-        _save_diagnostics(self.diagnostics, diag_path)
+        _save_diagnostics(diags, diag_path)
 
     def save_report(self, gdf_admin: gpd.GeoDataFrame, level_name: str, period_str: str,
                     diagnostics: Dict[str, Any] = None):
@@ -514,16 +479,11 @@ class BaseHotspotAnalyzer:
             return
 
         logger.debug(f"save_report called for {level_name}")
-        logger.debug(f"gdf_admin columns: {list(gdf_admin.columns)}")
-        logger.debug(f"high_outbreak in gdf_admin: {'high_outbreak' in gdf_admin.columns}")
 
         active = gdf_admin[gdf_admin['all_tested_curr'] > 0].copy()
         if active.empty:
             logger.warning(f"No data to save for {level_name}")
             return
-
-        logger.debug(f"active columns after filter: {list(active.columns)}")
-        logger.debug(f"high_outbreak in active: {'high_outbreak' in active.columns}")
 
         is_hex = 'Hex' in level_name
 

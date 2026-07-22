@@ -8,7 +8,7 @@ combined with local knowledge for decision-making.
 
 A Bayesian surveillance pipeline that flags hotspots of recent HIV
 infection in Ukraine from facility-based recency-testing data, aggregated
-onto an **H3 hexagonal grid** (res3 / res4) or **ADM1 oblasts** — selectable
+onto an **H3 hexagonal grid** (res3) or **ADM1 oblasts** — selectable
 per run, individually or in combination.
 
 ## Data
@@ -21,6 +21,20 @@ collaborators. The pipeline reads facility-based recency-testing records
 rules. Only the public geometry layers (H3 grid, administrative boundaries)
 are version-controlled.
 
+### Testing the pipeline without the confidential data
+
+You do **not** need the confidential case file to try the pipeline. A fully
+synthetic test dataset ships with the repository at
+`data/synthetic_input_data.xlsx`, and the notebook
+`synthetic_data/synthetic_pipeline_public.ipynb` turns it into the file the
+pipeline runs on (`data/synthetic_input_data_double.xlsx`), using **no real data
+at any point**. The same notebook also demonstrates the geographic-privacy tools
+(reversible coordinate encryption and donut geomasking).
+[`synthetic_data/README.md`](synthetic_data/README.md) has a **step-by-step
+getting-started guide** — where the test data lives, how to generate the input,
+how to run the pipeline, and where the outputs land — plus the provenance chain
+and an honest privacy statement.
+
 ---
 
 ## What it does
@@ -29,17 +43,25 @@ For each **unit** (H3 hexagon or oblast) the pipeline estimates the
 proportion of recent infections among newly-diagnosed and compares it against
 the national picture along two axes:
 
-- **SMR** (Standardised Morbidity Ratio) — the unit's current
-  proportion versus the **current** national rate. Answers *"is the
-  recency proportion here higher than the country right now?"*
-- **SIR** (Standardised Incidence Ratio) — the unit's current
-  proportion versus its **own Empirical-Bayes-shrunken history**, adjusted
-  for the national trend. Answers *"is this area rising relative to where
-  it used to be?"*
+- **Level (vs the country)** — the unit's current recency proportion versus the
+  **current national rate**, computed leave-one-out so a unit that carries much
+  of the national caseload cannot partly mask itself. Answers *"is the recency
+  proportion here credibly higher than the country right now?"* The test is at
+  **parity** (ratio > 1, no arbitrary multiplier). Labelled *National reference
+  ratio* in the reports; internal column names remain `smr_*`.
+- **Trend (vs its own past)** — the current-vs-history change read directly from
+  a **joint two-period model** (a hierarchical per-unit change `delta`). Answers
+  *"is this area credibly rising relative to where it used to be?"*, again at
+  parity (`P(delta > 0)`). Labelled *Historical trend ratio*; internal names
+  remain `sir_*`.
 
-Both axes are evaluated against FDR-controlled exceedance probabilities and
-crossed into a seven-category taxonomy that separates a fresh rise from a
-sustained high level from a wind-down (see *Classification* below).
+Both axes are FDR-controlled, and the calling confidence is a run parameter:
+the default **0.80** is the Richardson et al. (2004) disease-mapping decision
+rule D(0.8,1), confirmed as the sensitivity/false-positive knee by a simulation
+on the site volumes (`validation/threshold_simulation.py`). A unit needs at
+least **two** recent events to be called a hotspot at all (the presence gate).
+The two axes cross into a seven-category taxonomy that separates a fresh rise
+from a sustained high level from a wind-down (see *Classification* below).
 
 Because the recent-event counts per unit are often small, the rigorous
 classification is complemented by a **watch-list** that ranks units for
@@ -62,9 +84,14 @@ populations, so spatial smoothing across neighbours would be misleading.
 
 | Model | Role |
 |-------|------|
-| **Bayesian (crude)** | The **primary detector**. Estimates the recency proportion per unit with no covariate adjustment. Drives the hotspot list, the maps and the recommendations. |
+| **Joint two-period Beta-Binomial** | The **primary detector** (config `two_period_model`). Fits the current and historical windows together, reading the level from the current-period rate and the trend directly from a hierarchical per-unit change `delta`. No covariate adjustment; drives the hotspot list, the maps and the recommendations. |
 | **Bayesian + covariates** | An **explanatory layer**, reported alongside the crude result (never overriding it). Adjusts for `proportion_high_risk` to ask *"is the burden higher than the risk-group mix predicts?"*. The adjustment is descriptive, not causal. |
-| **Truncated Binomial** | Optional branch (`--use-hurdle`) for very sparse data dominated by structural zeros — fits the Beta-Binomial only on active testing sites. |
+
+The single-window hierarchical Beta-Binomial (`run_model`) remains available as a
+fallback. The Truncated Binomial ("Hurdle") and the two-part zero-inflated
+branches have both been **retired**: zero-count units are handled by the
+denominator filter plus the two-recent-event presence gate, so the extra
+sub-models added complexity without improving detection.
 
 The covariate model is descriptive on purpose: `proportion_high_risk` lies
 on the causal pathway from local environment to recent infection, so
@@ -102,7 +129,7 @@ Place the following in `data/`:
     drop sites closed by the war when deciding `site_present` per period.
     If the sheet is absent the pipeline still runs (falls back to observed
     presence).
-- H3 geometry: `h3_hexagons_res4.geojson` (and `res3` / `res5` when used).
+- H3 geometry: `h3_hexagons_res3.geojson` (the pipeline standardised on res3).
 - `Ukraine_Adm*.geojson` boundary layers are **not** an analysis mode — they
   are used only to (a) label each hexagon with its oblast/rayon/community
   name in the iterative report and (b) draw oblast outlines on the fallback
@@ -130,8 +157,9 @@ python run_hotspots.py config.json
 "use defaults?" shortcut and no config-driven auto-start). It asks:
 
 1. **Analysis type** — standard (single window) or iterative (sliding windows).
-2. **Levels** — any combination of `res3`, `res4`, `adm1` (oblasts). Each
-   selected level is analysed separately, with its own reports and maps.
+2. **Levels** — `res3` hexagons and/or `adm1` (oblasts). Each selected level
+   is analysed separately, with its own reports and maps. (The pipeline
+   standardised on res3; finer resolutions are not offered.)
 3. **Analysis window**
    - *iterative:* 3 / 6 / 9 / 12 months.
    - *standard:* you enter the period start/end (window ≤ 12 months).
@@ -153,8 +181,6 @@ fully-specified config.
 |------|--------|
 | `--test` | Run on the built-in `DEFAULT_CONFIG` (a config file is optional); no wizard. |
 | `--use-loo-ic` | Use LOO-IC for model selection instead of the heuristic score. |
-| `--use-hurdle` | Enable the Truncated-Binomial branch for sparse data. |
-| `--hurdle-threshold N` | Structural-zero percentage that triggers the hurdle suggestion (default 70). |
 | `--log-level {DEBUG,INFO,WARNING,ERROR}` | Console / file log verbosity (default INFO). |
 | `--no-log-stdout` / `--no-log-file` | Disable console or file logging. |
 
@@ -175,35 +201,47 @@ wizard, not stored in the config. Key fields:
   "output_dir": "output",
   "target_crs": "EPSG:3857",
   "administrative_units": { "adm1_path": "data/Ukraine_Adm1_Oblast.geojson", "oblast_col": "ADM1_EN", "...": "..." },
-  "h3_hexagons": { "res3_path": "...", "res4_path": "...", "...": "..." },
+  "h3_hexagons": { "res3_path": "data/h3_hexagons_res3.geojson", "h3_id_col": "h3_id" },
   "bayesian": {
     "use_non_centered": true,
     "auto_select_parametrization": true
   },
-  "detection": { "smr_threshold": 2.0, "sir_threshold": 1.5 },
+  "detection": {
+    "smr_threshold": 1.0, "sir_threshold": 1.0,
+    "smr_low_threshold": 1.0, "sir_low_threshold": 1.0,
+    "confidence_level": 0.80
+  },
+  "smr_leave_one_out": true,
+  "two_period_model": true,
   "watchlist": { "burden_top_frac": 0.80, "rate_percentile": 0.80 }
 }
 ```
 
-- **Levels** are chosen in the wizard: any combination of `res3`, `res4`,
-  `adm1` (oblasts). `analysis_mode` stays `h3_hexagons` (a geometry flag);
+- **Levels** are chosen in the wizard: `res3` hexagons and/or `adm1`
+  (oblasts). `analysis_mode` stays `h3_hexagons` (a geometry flag);
   the oblast level is driven by the level choice and reads
   `administrative_units` / `adm1_path`.
 - **Analysis window & baseline** are wizard choices too (see *The interactive
   wizard*): the baseline length is derived from the window (1-6 m → 12,
   7-9 m → 18, 10-12 m → 24) and never starts before 2023-01-01.
-- **`detection`** — the epidemiological cut-offs for the SMR/SIR exceedance
-  taxonomy. A unit is flagged on an axis when `P(ratio > threshold)` clears
-  its FDR cut-off. `smr_threshold = 2.0` (a doubling vs national) and
-  `sir_threshold = 1.5` are the conventional elevated / moderately-elevated
-  levels; tune them here.
+- **`detection`** — the cut-offs for the level/trend exceedance taxonomy. A unit
+  is flagged on an axis when `P(ratio > threshold)` clears its FDR cut-off, and
+  the confidence floor of that cut-off is `confidence_level`. All ratio
+  thresholds are **1.0 (parity)**: a unit is flagged when it is credibly *above*
+  the reference, with no arbitrary multiplier (the old `2.0` / `1.5` are gone). A
+  simulation (`validation/threshold_simulation.py`) showed any multiplier above
+  parity detects nothing on this sparse data. `confidence_level = 0.80` is the
+  Richardson et al. (2004) D(0.8,1) rule, calibrated by the same simulation.
+- **`smr_leave_one_out`** (default `true`) — compute the national reference rate
+  excluding each unit's own counts, so a dominant unit cannot mask itself.
+- **`two_period_model`** (default `true`) — use the joint two-period detector.
 - **`watchlist`** — triage knobs for the burden + rate watch-list (see
   *Watch-list*). `burden_top_frac` (default 0.80) sets the cumulative share of
   the recent caseload counted as "high burden"; `rate_percentile` (default
-  0.80) sets the relative-rate cut (top 20% of the posterior SMR). These do
+  0.80) sets the relative-rate cut (top 20% of the posterior relative rate). These do
   **not** affect the rigorous `classification`.
 - **`bayesian.resolution_sigma_multiplier`** (optional) — a map from level
-  name (e.g. `"Hex_Res4"` or `"Oblast"`) to a multiplier on the prior width;
+  name (e.g. `"Hex_Res3"` or `"Oblast"`) to a multiplier on the prior width;
   larger = weaker shrinkage. Absent → `1.0`.
 - **`bayesian.frr`** (optional) — false-recent-rate correction; off by
   default and not part of the standard protocol (the indicator is a
@@ -231,19 +269,30 @@ output/<timestamp>/
 │   ├── Watchlist_Map_*_*.png                    # burden + rate triage map
 │   ├── Interpretation_*.txt / Specification_Analysis_*.txt
 │   └── *_PPC.png / *_Forest.png / *_Pairs.png   # diagnostic plots
-├── bayesian_covariates/hex/<resN>/...           # parallel explanatory layer
 ├── summary/
 │   ├── Dashboard_*.png                          # one-page overview
+│   ├── Group_Attribution_Report.xlsx            # oblast risk-group attribution + SMR
 │   └── Results_*.json                           # snapshot for historical comparison
 └── pipeline.log
 ```
 
 The per-unit `Report_*.xlsx` carries, alongside the counts and the
-classification: the posterior SMR **mean and median** with its 95% credible
-interval, the reliability score/category, and the watch-list columns
+classification: the posterior **National reference ratio** (internal `smr_*`)
+mean and median with its 95% credible interval, the reliability score/category,
+and the watch-list columns
 (`on_watchlist`, `watch_reason`, `watch_rank`, `burden_rank`, `rate_rank`,
 `burden_share_pct`). The oblast level writes the same files under
 `bayesian/admin/Oblast/`.
+
+`summary/Group_Attribution_Report.xlsx` is a supplementary explanatory analysis
+at the **oblast** level (where the sparse recent-event counts have enough
+power). It carries the tested case-mix shift over time, the per-group recency
+rates with a two-proportion test, and an indirect standardization: a
+`comp_ratio` (how much a unit's testing mix alone raises expected recency) and
+an `smr` (observed / expected, i.e. how much a unit is hot *beyond* its mix,
+with a 95% CI). The `smr` cross-checks the detector's own per-unit National
+reference ratio; it does not change the classification. Generated by the
+pipeline, or standalone via `validation/group_attribution_report.py`.
 
 In iterative mode the rolling-window hotspot report (with each hexagon
 labelled by its oblast/rayon/community name) and a
@@ -254,7 +303,8 @@ converge) are written under `iterative/`.
 
 ## Classification
 
-The SIR × SMR cross yields seven labels:
+The trend × level cross (each axis tested at parity against its FDR-controlled
+cut-off) yields seven labels:
 
 | Label | Meaning |
 |-------|---------|
@@ -266,7 +316,7 @@ The SIR × SMR cross yields seven labels:
 | ⚪ **Normal** | No signal on either axis. |
 
 New hexagons (no historical data) are marked with a `○` symbol on the map
-and classified on SMR only — the trend axis is undefined for them.
+and classified on the level axis only — the trend axis is undefined for them.
 
 ### Watch-list (burden + rate triage)
 
@@ -279,9 +329,9 @@ change the classification above) that surfaces both:
 - **Burden** — recent-case count as a share of the level-wide total;
   `burden_high` marks the units carrying the top `burden_top_frac` (default
   80%) of the recent caseload.
-- **Rate (relative)** — `rate_high` marks units whose posterior SMR sits in
-  the top `1 - rate_percentile` (default top 20%) of the active distribution,
-  or that are already an FDR-flagged hotspot.
+- **Rate (relative)** — `rate_high` marks units whose posterior relative rate
+  (National reference ratio) sits in the top `1 - rate_percentile` (default top
+  20%) of the active distribution, or that are already an FDR-flagged hotspot.
 
 A unit is on the list (`on_watchlist`) if it is notable on **either** axis,
 recorded in `watch_reason` as `burden` / `rate` / `both`; `watch_rank` orders
@@ -314,7 +364,7 @@ The standalone verification scripts live in `validation/`:
 python run_hotspots.py --test                       # full pipeline on the default config
 python validation/test_convergence_gate.py          # convergence-gate smoke test
 python validation/simulation_validation.py          # synthetic FDR / sensitivity / specificity check
-python validation/multiseed_stability.py config.json --seeds 42 43 44 --resolution 4
+python validation/multiseed_stability.py config.json --seeds 42 43 44 --resolution 3
 ```
 
 `validation/multiseed_stability.py` refits the model under several random seeds and
@@ -331,9 +381,12 @@ Core principles as implemented in this codebase:
   newly-diagnosed who were recency-tested** (RITA: rapid recency assay +
   viral load, with ART-experienced / previously-known positives excluded).
   It is a proportion, not an incidence estimate.
-- Each unit is compared to the national baseline along two independent
-  axes (SMR vs current national, SIR vs own EB-shrunken history), each
-  FDR-controlled.
+- Each unit is measured on two independent axes, each FDR-controlled at
+  **parity** (ratio > 1, no multiplier): a **level** axis versus the current
+  national rate (computed leave-one-out) and a **trend** axis read from the
+  joint two-period per-unit change `delta`. These are the *National reference
+  ratio* and *Historical trend ratio* in the reports (internal `smr_*` / `sir_*`).
+  The calling confidence defaults to 0.80 (Richardson et al. 2004 D(0.8,1)).
 - The hierarchical model is **exchangeable** (no spatial structure), which
   is the appropriate choice for facility-based surveillance where adjacent
   units need not be epidemiologically similar.
@@ -347,7 +400,7 @@ Core principles as implemented in this codebase:
 - **Case-mix over time.** The composition of who is recency-tested has
   shifted across the programme (declining share of key populations). Because
   risk groups differ in their recent-infection share, this can confound
-  comparisons of a place against its own past (the SIR axis). A
+  comparisons of a place against its own past (the trend axis). A
   decomposition of the observed national decline attributes only a small
   part (~5–18%) to this composition shift and the large majority to a
   genuine within-group decline — but local comparisons should still be read
@@ -355,7 +408,7 @@ Core principles as implemented in this codebase:
 - **Assay change.** Recent-fraction levels are **not comparable across a
   change of recency assay** (e.g. Asante → LAg): different assays imply a
   different mean duration of recent infection. Treat a post-switch period as
-  a fresh baseline; do not compare SIR across the switch.
+  a fresh baseline; do not compare the trend axis across the switch.
 
 ---
 

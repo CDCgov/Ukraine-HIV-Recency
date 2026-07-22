@@ -11,11 +11,10 @@ flips on when divergences exceed 5% after every adaptive attempt so
 unhealthy posteriors do not silently propagate to downstream maps and
 reports.
 
-``run_hurdle_model`` is the Truncated Binomial branch for sparse data
-with structural zeros: when at least ``hurdle_threshold`` percent of
-sites are structurally inactive, the fit is restricted to the active
-sites only and the inactive ones are reported as structural zeros
-without being passed through the latent recency model.
+``run_two_period_model`` is the production detector: a joint two-window fit
+that reads the level from the current-period rate and the trend directly from a
+hierarchical per-territory change ``delta``. Zero-count units are handled by the
+denominator filter plus the two-recent-event presence gate.
 """
 
 from __future__ import annotations
@@ -31,6 +30,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pymc as pm
+import pytensor.tensor as pt
 
 from pipeline.analyzers.base import BaseHotspotAnalyzer
 from pipeline.analyzers._bayesian_runtime import (
@@ -67,19 +67,20 @@ logger = logging.getLogger(__name__)
 
 
 class BayesianAnalyzer(BaseHotspotAnalyzer):
-    """Bayesian Hierarchical Model -- the **primary crude detector**.
+    """Bayesian hierarchical detector (the sole model).
 
     This analyzer answers "where is the recent-infection proportion
     higher than the national current rate?" without adjusting for the
     composition of who walks in the door. That is intentional: programme
     targeting cares about absolute burden, not about residual burden after
-    risk-mix adjustment.
+    risk-mix adjustment, and on this data the risk-group composition does not
+    explain recency anyway (the two groups have near-equal recent-infection
+    rates). The per-group question is answered separately by the supplementary
+    indirect-standardization analysis
+    (:mod:`pipeline.standardization.group_attribution`).
 
     Outputs from this model drive the hotspot list, the maps and the
-    recommendations. The covariate model (:class:`BayesianCovariatesAnalyzer`)
-    is a parallel explanatory layer -- it asks the different question
-    "where is the burden higher than risk composition predicts?" and is
-    reported alongside, not used to override the crude classification.
+    recommendations.
     """
 
     MODEL_TYPE = "bayesian"
@@ -147,14 +148,20 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
                 # Beta mixing distribution: large kappa -> near-Binomial,
                 # small kappa -> strong overdispersion. Gamma(3, 0.2) is a
                 # weakly informative prior that keeps kappa positive.
-                kappa = pm.Gamma('kappa', alpha=3, beta=0.2)
+                # Weakly-informative concentration: let the data pick kappa,
+                # including near-Binomial (large kappa). The previous
+                # Gamma(3, 0.2) (mean 15) forced overdispersion even on
+                # Binomial-like data, weakening the likelihood so strong signals
+                # were over-shrunk toward the national rate (a 45/250 hex read as
+                # SMR ~1.3, i.e. Normal). See validation/overdispersion notes.
+                kappa = pm.Gamma('kappa', alpha=2, beta=0.01)
                 y_obs = pm.BetaBinomial('y_obs', alpha=p * kappa, beta=(1 - p) * kappa,
                                         n=n, observed=y)
 
                 # [WARN] IMPROVEMENT 4: Parallel sampling configuration
                 sampling_config = ParallelSamplingConfig.get_sampling_config(
                     n_territories=len(df),
-                    fast_mode=False,
+                    fast_mode=bool(self.cfg.get('fast_sampling', False)),
                     cores_override=self.cfg.get('sampling', {}).get('cores'),
                 )
                 draws = sampling_config['draws']
@@ -168,7 +175,7 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
                 progress_callback = SamplingProgressBar.create_progress_callback()
 
                 # Sample from posterior with adaptive target_accept
-                # ETA estimation for large grids (H3 res5)
+                # ETA estimation for large grids
                 n_territories = len(df)
                 if n_territories > 1000:
                     # Rough estimate: ~0.5-1.5 sec per territory for tune+draw
@@ -223,8 +230,8 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
             )
 
             # Z-scores, then the shared FDR-controlled SMR/SIR classification
-            # (audit M2 — identical post-fit step in the hurdle and covariates
-            # fits, centralised in BaseHotspotAnalyzer._finalize_classification).
+            # (audit M2 — identical post-fit step shared with the covariates
+            # fit, centralised in BaseHotspotAnalyzer._finalize_classification).
             df = self.calculate_z_scores(df, national_rate)
             df = self._finalize_classification(df, national_rate)
 
@@ -284,252 +291,268 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
         """Thin wrapper around :func:`pipeline.diagnostics.calculate_bayesian_diagnostics`."""
         return _calculate_bayesian_diagnostics(trace, df, level_name, national_rate, model=model, ppc=ppc, convergence_fatal=convergence_fatal)
 
-    def run_hurdle_model(self, gdf_admin: gpd.GeoDataFrame, level_name: str,
-                         national_rate: float) -> Tuple[gpd.GeoDataFrame, dict]:
+    def run_two_period_model(self, gdf_admin: gpd.GeoDataFrame, level_name: str,
+                             national_rate: float, national_se: float,
+                             parametrization: str = 'non_centered') -> Tuple[gpd.GeoDataFrame, dict]:
+        """Joint two-period model -- the trend axis as a single hierarchical fit.
+
+        Fits both windows at once with
+
+            logit(p_it) = mu_t + a_i + delta_i * I(t = current)
+
+        where ``mu_t`` is the national logit level in each period (baseline vs
+        current national trend), ``a_i`` is a hierarchical territory intercept
+        and ``delta_i`` is a hierarchical territory-specific current-period
+        change. Each territory contributes TWO Beta-Binomial observations
+        (history and current), so ``a_i`` and ``delta_i`` are jointly identified
+        only because ``delta_i`` partially pools toward a common trend
+        ``mu_delta`` -- that shrinkage is what keeps the per-territory slope
+        well-behaved on units with very few recent events.
+
+        This replaces the two-step SIR machinery (fit the current window, then
+        take a ratio against a separately EB-shrunk history): the trend is read
+        DIRECTLY from the posterior of ``delta_i``. The "vs national now" axis
+        (SMR) still comes from the current-period rate ``p_curr_i``; the trend
+        axis (SIR) is ``exp(delta_i)``, the multiplicative current-vs-history
+        change (approximately the recency-proportion ratio at low prevalence).
+        Zero-count territories are handled by the taxonomy presence gate as
+        before. Enabled with the config flag ``two_period_model``.
         """
-        Run Hurdle Binomial model for sparse data with many structural zeros.
-
-        Two-stage model:
-        Stage 1: Logistic regression for P(site_present=1)
-        Stage 2: Binomial model for active sites only
-
-        This model is appropriate when:
-        - High proportion of structural zeros (>70%)
-        - Clear distinction between sites with/without testing
-        - Facility-based surveillance data
-
-        Args:
-            gdf_admin: GeoDataFrame with all territories
-            level_name: Administrative level name
-            national_rate: National recency rate
-
-        Returns:
-            Tuple of (updated GeoDataFrame, diagnostics dict)
-        """
-        logger.info(f"\n--- Hurdle Binomial Model for {level_name} ---")
-
-        # Check if site_present flag exists
-        if 'site_present' not in gdf_admin.columns:
-            logger.error("site_present column not found - cannot run Hurdle model")
+        prep = prepare_bayesian_inputs(
+            self.cfg, gdf_admin, level_name, national_rate, national_se, parametrization,
+        )
+        if prep is None:
             return gdf_admin, None
+        df = prep['df']
+        y = prep['y']
+        n = prep['n']
+        parametrization = prep['parametrization']
+        sigma_hyperprior = prep['sigma_hyperprior']
 
-        # Count structural zeros
-        n_total = len(gdf_admin)
-        n_active = gdf_admin['site_present'].sum()
-        n_structural_zeros = n_total - n_active
-        pct_structural = (n_structural_zeros / n_total) * 100
+        y_h = np.nan_to_num(df['recent_count_hist'].to_numpy(), nan=0.0).astype(int)
+        n_h = np.nan_to_num(df['all_tested_hist'].to_numpy(), nan=0.0).astype(int)
+        has_hist = n_h > 0
+        n_terr = len(df)
 
-        logger.info(f"Total territories: {n_total}")
-        logger.info(f"Active sites: {n_active} ({(n_active/n_total)*100:.1f}%)")
-        logger.info(f"Structural zeros: {n_structural_zeros} ({pct_structural:.1f}%)")
+        logger.info(f"\n--- Joint Two-Period Model for {level_name} ---")
+        logger.info(f"{int(has_hist.sum())}/{n_terr} territories have a baseline (history) window")
 
-        if n_active < 3:
-            logger.error(f"Need at least 3 active sites for the truncated-Binomial model, got {n_active}")
-            return gdf_admin, None
+        _clip = float(np.clip(national_rate,
+                              ANALYSIS_CONSTANTS['prior_mu_logit_clip_min']['value'],
+                              ANALYSIS_CONSTANTS['prior_mu_logit_clip_max']['value']))
+        prior_mu = float(np.log(_clip / (1.0 - _clip)))
 
-        # Despite the historical function name ``run_hurdle_model`` (kept for
-        # backwards compatibility with the CLI flag and config key), this is
-        # a truncated Binomial analysis on the active sites only, not a true
-        # two-stage Hurdle. ``site_present`` is determined deterministically
-        # from the testing-sites registry (a site counts as "present" in a
-        # window iff the registry shows it was operating then), so adding
-        # a separate logistic stage for site presence would contribute no
-        # information -- it would just be observing the registry twice.
-        df_active = gdf_admin[gdf_admin['site_present'] == True].copy()
-
-        logger.info(f"Truncated Binomial (active sites): {len(df_active)} active sites")
-
-        # Prepare data
-        y = df_active['recent_count_curr'].values.astype(int)
-        n = df_active['all_tested_curr'].values.astype(int)
-        hist_prop = df_active['recent_proportion_hist'].values
-        # Fill missing historical proportions (new sites) with the national
-        # recency proportion to avoid NaN propagating into the model.
-        hist_prop = np.where(np.isnan(hist_prop), national_rate, hist_prop)
-
-        # Check for valid data
-        if len(y) == 0 or n.sum() == 0:
-            logger.error("No valid data for active sites")
-            return gdf_admin, None
-
-        # Adaptive prior based on sample size
-        national_events = y.sum()
-        avg_tests = n.mean()
-
-        if national_events >= 50:
-            sigma_hyperprior = 1.0
-            prior_strength = "weak"
-        elif national_events >= 20:
-            sigma_hyperprior = 0.7
-            prior_strength = "moderate"
-        elif national_events >= 10:
-            sigma_hyperprior = 0.5
-            prior_strength = "informative"
+        # Testing-intensity normalization (site turnover). Standardized log
+        # test-months enter the LEVEL of each window, so equal effort maps to an
+        # equal shift and the trend delta is net of testing-effort change. Pooled
+        # standardization (current + history together) keeps the mapping identical
+        # across windows. Toggle with config 'intensity_adjustment' (default on).
+        _use_intensity = (bool(self.cfg.get('intensity_adjustment', True))
+                          and 'testing_intensity_curr' in df.columns
+                          and 'testing_intensity_hist' in df.columns)
+        if _use_intensity:
+            _li_curr = np.log1p(np.nan_to_num(df['testing_intensity_curr'].to_numpy(dtype=float), nan=0.0))
+            _li_hist = np.log1p(np.nan_to_num(df['testing_intensity_hist'].to_numpy(dtype=float), nan=0.0))
+            _pool = np.concatenate([_li_curr, _li_hist])
+            _mu_i, _sd_i = float(_pool.mean()), float(_pool.std())
+            if _sd_i > 1e-8:
+                z_int_curr = (_li_curr - _mu_i) / _sd_i
+                z_int_hist = (_li_hist - _mu_i) / _sd_i
+                logger.info(f"Two-period model: testing-intensity normalization ON "
+                            f"(mean {np.expm1(_mu_i):.1f} test-months)")
+            else:
+                _use_intensity = False
+                logger.info("Two-period model: intensity normalization OFF (no variation in test-months)")
         else:
-            sigma_hyperprior = 0.3
-            prior_strength = "strong"
-
-        if avg_tests < 20:
-            sigma_hyperprior *= 0.7
-            logger.info(f"[WARN] Low average sample size ({avg_tests:.1f}) - tightening priors")
-
-        logger.info(f"Prior strength: {prior_strength} (sigma={sigma_hyperprior:.2f})")
-        logger.info(f"National events: {national_events}, Avg tests: {avg_tests:.1f}")
-
-        # Likelihood choice: always Beta-Binomial (Binomial recovered as
-        # kappa -> infinity). See BayesianAnalyzer.run_model for the rationale.
-        logger.info("Likelihood: Beta-Binomial (Binomial recovered as kappa -> infinity)")
+            logger.info("Two-period model: testing-intensity normalization OFF")
 
         try:
             with pm.Model() as model:
-                # Hyperpriors
-                # center mu_alpha on national baseline rate (logit scale)
-                prior_mu = pm.math.logit(np.clip(
-                    national_rate,
-                    ANALYSIS_CONSTANTS['prior_mu_logit_clip_min']['value'],
-                    ANALYSIS_CONSTANTS['prior_mu_logit_clip_max']['value']))
-                mu_alpha = pm.Normal('mu_alpha', mu=prior_mu, sigma=2)
-                mu_beta = pm.Normal('mu_beta', mu=0, sigma=2)
-                sigma_alpha = pm.HalfNormal('sigma_alpha', sigma=sigma_hyperprior)
-                sigma_beta = pm.HalfNormal('sigma_beta', sigma=sigma_hyperprior)
+                # Period national logit levels (baseline vs current).
+                mu_hist = pm.Normal('mu_hist', mu=prior_mu, sigma=1.5)
+                mu_curr = pm.Normal('mu_curr', mu=prior_mu, sigma=1.5)
 
-                # Non-centered parametrization for better sampling
-                alpha_offset = pm.Normal('alpha_offset', mu=0, sigma=1, shape=len(df_active))
-                beta_offset = pm.Normal('beta_offset', mu=0, sigma=1, shape=len(df_active))
+                # Hierarchical territory intercept and current-period change.
+                sigma_a = pm.HalfNormal('sigma_a', sigma=2)
+                mu_delta = pm.Normal('mu_delta', mu=0.0, sigma=1.0)
+                # Between-territory trend SD. Kept deliberately permissive: a tight
+                # prior over-shrinks genuine risers toward the common trend and the
+                # model then never clears the FDR-controlled exceedance cutoff (a
+                # simulation-confirmed failure mode). 1.0 on the logit scale allows
+                # a territory to move well away from the pool when the data support it.
+                sigma_delta = pm.HalfNormal('sigma_delta', sigma=1.0)
 
-                alpha = pm.Deterministic('alpha', mu_alpha + sigma_alpha * alpha_offset)
-                beta = pm.Deterministic('beta', mu_beta + sigma_beta * beta_offset)
+                if parametrization == 'non_centered':
+                    a_offset = pm.Normal('a_offset', mu=0, sigma=1, shape=n_terr)
+                    a = pm.Deterministic('a', sigma_a * a_offset)
+                    d_offset = pm.Normal('d_offset', mu=0, sigma=1, shape=n_terr)
+                    delta = pm.Deterministic('delta', mu_delta + sigma_delta * d_offset)
+                else:
+                    a = pm.Normal('a', mu=0, sigma=sigma_a, shape=n_terr)
+                    delta = pm.Normal('delta', mu=mu_delta, sigma=sigma_delta, shape=n_terr)
 
-                # Logit model
-                logit_p = alpha + beta * hist_prop
+                # Testing-intensity effect on the level of each window (net-of-effort
+                # trend). One shared coefficient; the window enters via its own
+                # standardized log test-months.
+                if _use_intensity:
+                    beta_intensity = pm.Normal('beta_intensity', mu=0.0, sigma=1.0)
+                    _eff_hist = beta_intensity * pt.as_tensor_variable(z_int_hist)
+                    _eff_curr = beta_intensity * pt.as_tensor_variable(z_int_curr)
+                else:
+                    _eff_hist = 0.0
+                    _eff_curr = 0.0
 
-                # Per-territory recency probability (Deterministic so it is in
-                # the trace for posterior predictive checks). Beta-Binomial
-                # likelihood; kappa is the Beta concentration (large -> near
-                # Binomial). Gamma(3, 0.2) is a weakly informative prior.
-                p = pm.Deterministic('p', pm.math.invlogit(logit_p))
-                kappa = pm.Gamma('kappa', alpha=3, beta=0.2)
-                y_obs = pm.BetaBinomial('y_obs', alpha=p * kappa, beta=(1 - p) * kappa,
-                                        n=n, observed=y)
+                p_hist = pm.Deterministic('p_hist', pm.math.invlogit(mu_hist + a + _eff_hist))
+                p_curr = pm.Deterministic('p_curr', pm.math.invlogit(mu_curr + a + delta + _eff_curr))
+                # Weakly-informative concentration: let the data pick kappa,
+                # including near-Binomial (large kappa). The previous
+                # Gamma(3, 0.2) (mean 15) forced overdispersion even on
+                # Binomial-like data, weakening the likelihood so strong signals
+                # were over-shrunk toward the national rate (a 45/250 hex read as
+                # SMR ~1.3, i.e. Normal). See validation/overdispersion notes.
+                kappa = pm.Gamma('kappa', alpha=2, beta=0.01)
 
-                # Sample
-                logger.info("Sampling from posterior...")
-                trace = pm.sample(
-                    draws=1000,
-                    tune=500,
-                    chains=2,
-                    cores=1,
-                    target_accept=0.95,
-                    return_inferencedata=True,
-                    idata_kwargs={"log_likelihood": True},
+                # Current window: observed Beta-Binomial (drives PPC / diagnostics).
+                pm.BetaBinomial('y_obs', alpha=p_curr * kappa, beta=(1 - p_curr) * kappa,
+                                n=n, observed=y)
+                # History window: a masked Potential so it informs a_i / mu_hist /
+                # kappa for territories that actually have a baseline, without a
+                # second posterior-predictive stream.
+                _hist_mask = pt.as_tensor_variable(has_hist.astype(float))
+                _n_h_safe = pt.as_tensor_variable(np.maximum(n_h, 1))
+                _bb_h = pm.BetaBinomial.dist(alpha=p_hist * kappa, beta=(1 - p_hist) * kappa,
+                                             n=_n_h_safe)
+                pm.Potential('y_hist_ll',
+                             (pm.logp(_bb_h, pt.as_tensor_variable(y_h)) * _hist_mask).sum())
+
+                sampling_config = ParallelSamplingConfig.get_sampling_config(
+                    n_territories=n_terr, fast_mode=bool(self.cfg.get('fast_sampling', False)),
+                    cores_override=self.cfg.get('sampling', {}).get('cores'),
+                )
+                draws = sampling_config['draws']
+                tune = sampling_config['tune']
+                chains = sampling_config['chains']
+                cores = sampling_config['cores']
+                target_accept = max(sampling_config['target_accept'], 0.95)
+                logger.info(f"Using optimized sampling: {chains} chains, {draws} draws, {cores} cores")
+                progress_callback = SamplingProgressBar.create_progress_callback()
+                logger.info("Sampling from posterior (two-period model; this may take a few minutes)...")
+
+                trace, sampling_info = ParallelSamplingConfig.adaptive_sample(
+                    model=model, initial_target_accept=target_accept,
+                    draws=draws, tune=tune, chains=chains, cores=cores,
                     random_seed=self.cfg.get('random_seed', 42),
-                    progressbar=False
+                    progressbar=False,
+                    callback=progress_callback if progress_callback else None,
                 )
 
-            logger.info("[OK] Sampling completed")
+                if sampling_info['adapted']:
+                    logger.info(f"[OK] Adaptive sampling: {sampling_info['n_attempts']} attempts, "
+                                f"final target_accept={sampling_info['final_target_accept']:.2f}, "
+                                f"divergences={sampling_info['divergence_pct']:.1f}%")
+                else:
+                    logger.info(f"[OK] Sampling completed (divergences={sampling_info['divergence_pct']:.1f}%)")
 
-            # Extract posterior samples
-            alpha_samples = trace.posterior['alpha'].values.reshape(-1, len(df_active))
-            beta_samples = trace.posterior['beta'].values.reshape(-1, len(df_active))
+                convergence_fatal = False
+                if sampling_info['divergence_pct'] > 5.0:
+                    logger.error("[WARN] CRITICAL: TWO-PERIOD MODEL CONVERGENCE FAILED "
+                                 f"(divergences={sampling_info['divergence_pct']:.1f}%) - RESULTS UNRELIABLE")
+                    convergence_fatal = True
 
-            # Calculate predictions for active sites
-            p_samples = []
-            for i in range(len(df_active)):
-                logit_p_samples = alpha_samples[:, i] + beta_samples[:, i] * hist_prop[i]
-                p_samples.append(1 / (1 + np.exp(-logit_p_samples)))
+            saved_model = model
+            logger.info("[OK] Two-period model converged")
 
-            df_active['predicted_prob'] = [np.mean(p) for p in p_samples]
-            df_active['predicted'] = df_active['predicted_prob'] * df_active['all_tested_curr']
-            df_active['residual'] = df_active['recent_count_curr'] - df_active['predicted']
-            df_active['prob_lower'] = [np.percentile(p, 2.5) for p in p_samples]
-            df_active['prob_upper'] = [np.percentile(p, 97.5) for p in p_samples]
+            if _use_intensity and 'beta_intensity' in trace.posterior:
+                _bi = trace.posterior['beta_intensity'].values.reshape(-1)
+                _lo, _hi = np.percentile(_bi, [2.5, 97.5])
+                logger.info("  beta_intensity (std. log test-months effect on the logit "
+                            f"level): {_bi.mean():.3f} [{_lo:.3f}, {_hi:.3f}]")
 
-            # Calculate exceedance probability
-            exceedance_probs = []
-            for i in range(len(df_active)):
-                p_i = p_samples[i]
-                exceedance_prob = (p_i > national_rate).mean()
-                exceedance_probs.append(exceedance_prob)
+            p_curr_samples = trace.posterior['p_curr'].values.reshape(-1, n_terr)
+            delta_samples = trace.posterior['delta'].values.reshape(-1, n_terr)
+            p_curr_mean = p_curr_samples.mean(axis=0)
 
-            df_active['exceedance_prob'] = exceedance_probs
+            df['predicted_prob'] = p_curr_mean
+            df['predicted'] = p_curr_mean * n
+            df['residual'] = y - df['predicted']
+            df['prob_lower'] = np.percentile(p_curr_samples, 2.5, axis=0)
+            df['prob_upper'] = np.percentile(p_curr_samples, 97.5, axis=0)
+            rng = np.random.default_rng(self.cfg.get('random_seed', 42))
+            df['count_lower'] = [float(np.percentile(rng.binomial(n[i], p_curr_samples[:, i]), 2.5))
+                                 for i in range(n_terr)]
+            df['count_upper'] = [float(np.percentile(rng.binomial(n[i], p_curr_samples[:, i]), 97.5))
+                                 for i in range(n_terr)]
+            df['exceedance_prob'] = (p_curr_samples > national_rate).mean(axis=0)
 
-            # Standardized comparison ratios for the active-sites subset
-            # (additive; the new taxonomy consumes these columns later).
+            # SMR (vs national now) from the current-period rate.
             _dt = (self.cfg or {}).get('detection', {}) if isinstance(self.cfg, dict) else {}
+            p_samples_list = [p_curr_samples[:, i] for i in range(n_terr)]
             _smr_sir = BaseHotspotAnalyzer._compute_smr_sir(
-                p_samples, df_active, national_rate,
+                p_samples_list, df, national_rate,
                 smr_threshold=float(_dt.get('smr_threshold', 2.0)),
                 sir_threshold=float(_dt.get('sir_threshold', 1.5)),
+                smr_low_threshold=float(_dt.get('smr_low_threshold', 0.5)),
+                leave_one_out=bool((self.cfg or {}).get('smr_leave_one_out', False)),
             )
-            df_active['national_rate_curr'] = _smr_sir['national_rate_curr']
-            df_active['baseline_rate_eb'] = _smr_sir['baseline_rate_eb']
-            df_active['smr_mean'] = _smr_sir['smr_mean']
-            df_active['smr_median'] = _smr_sir['smr_median']
-            df_active['smr_lower'] = _smr_sir['smr_lower']
-            df_active['smr_upper'] = _smr_sir['smr_upper']
-            df_active['sir_mean'] = _smr_sir['sir_mean']
-            df_active['sir_lower'] = _smr_sir['sir_lower']
-            df_active['sir_upper'] = _smr_sir['sir_upper']
-            df_active['exc_prob_smr'] = _smr_sir['exc_prob_smr']
-            df_active['exc_prob_sir'] = _smr_sir['exc_prob_sir']
-            df_active['exc_prob_smr_low'] = _smr_sir['exc_prob_smr_low']
-            df_active['exc_prob_sir_low'] = _smr_sir['exc_prob_sir_low']
+            for _k in ('national_rate_curr', 'baseline_rate_eb', 'smr_mean', 'smr_median',
+                       'smr_lower', 'smr_upper', 'exc_prob_smr', 'exc_prob_smr_low'):
+                df[_k] = _smr_sir[_k]
+            eb_K = float(_smr_sir.get('eb_concentration', 0.0) or 0.0)
+            df['sir_informative'] = df['all_tested_hist'].fillna(0).astype(float) > eb_K
+
+            # Trend axis read DIRECTLY from the joint model: exp(delta_i) is the
+            # multiplicative current-vs-history change. Territories without a
+            # baseline keep delta ~ mu_delta (pooled), and the taxonomy's
+            # sir_informative gate withholds a trend claim there.
+            sir_threshold = float(_dt.get('sir_threshold', 1.5))
+            ratio = np.exp(delta_samples)
+            df['sir_mean'] = ratio.mean(axis=0)
+            df['sir_lower'] = np.percentile(ratio, 2.5, axis=0)
+            df['sir_upper'] = np.percentile(ratio, 97.5, axis=0)
+            df['exc_prob_sir'] = (delta_samples > np.log(sir_threshold)).mean(axis=0)
+            df['exc_prob_sir_low'] = (delta_samples < -np.log(sir_threshold)).mean(axis=0)
             logger.info(
-                f"SMR/SIR computed: national_rate_curr={_smr_sir['national_rate_curr']:.4f}, "
-                f"EB concentration K={_smr_sir['eb_concentration']:.1f}"
+                f"Two-period: national_rate_curr={_smr_sir['national_rate_curr']:.4f}, "
+                f"mean trend exp(delta)={float(np.exp(delta_samples.mean())):.2f}, EB K={eb_K:.1f}"
             )
 
-            # Z-scores, then the shared FDR-controlled SMR/SIR classification
-            # (audit M2 — see BaseHotspotAnalyzer._finalize_classification).
-            df_active = self.calculate_z_scores(df_active, national_rate)
-            df_active = self._finalize_classification(df_active, national_rate)
+            df = self.calculate_z_scores(df, national_rate)
+            df = self._finalize_classification(df, national_rate)
 
-            # Join results back to full GeoDataFrame
             result_cols = ['predicted', 'predicted_prob', 'prob_lower', 'prob_upper', 'residual',
-                          'exceedance_prob', 'z_national', 'z_residual', 'combined_z', 'classification',
-                          'national_baseline', 'deviation_pct',
-                          # SIR/SMR taxonomy outputs:
-                          # point summaries and 95% credible intervals for each
-                          # ratio, the four exceedance probabilities used by the
-                          # taxonomy, the taxonomy label itself, the
-                          # new-site flag, and the in-window national rate /
-                          # EB-shrunken historical rate kept for traceability.
-                          'smr_mean', 'smr_median', 'smr_lower', 'smr_upper',
-                          'sir_mean', 'sir_lower', 'sir_upper',
-                          'exc_prob_smr', 'exc_prob_sir',
-                          'exc_prob_smr_low', 'exc_prob_sir_low',
-                          'classification_smr_sir', 'is_new_site',
-                          'national_rate_curr', 'baseline_rate_eb',
-                          # Combined burden + rate watch-list (add_watchlist).
-                          'on_watchlist', 'watch_reason', 'watch_rank',
-                          'burden_rank', 'rate_rank', 'burden_share_pct',
-                          'burden_high', 'rate_high']
-
+                           'exceedance_prob', 'z_national', 'z_residual', 'combined_z', 'classification',
+                           'national_baseline', 'deviation_pct',
+                           'smr_mean', 'smr_median', 'smr_lower', 'smr_upper',
+                           'sir_mean', 'sir_lower', 'sir_upper',
+                           'exc_prob_smr', 'exc_prob_sir',
+                           'exc_prob_smr_low', 'exc_prob_sir_low',
+                           'classification_smr_sir', 'is_new_site',
+                           'national_rate_curr', 'baseline_rate_eb',
+                           'on_watchlist', 'watch_reason', 'watch_rank',
+                           'burden_rank', 'rate_rank', 'burden_share_pct',
+                           'burden_high', 'rate_high']
             for col in result_cols:
-                if col in df_active.columns:
-                    # Use index-based merge instead of .values to avoid misalignment
-                    gdf_admin.loc[gdf_admin['site_present'] == True, col] = gdf_admin.loc[gdf_admin['site_present'] == True].index.map(df_active[col])
+                if col in df.columns:
+                    gdf_admin.loc[gdf_admin['all_tested_curr'] > 0, col] = \
+                        gdf_admin.loc[gdf_admin['all_tested_curr'] > 0].index.map(df[col])
+            if 'sir_informative' in df.columns:
+                gdf_admin.loc[gdf_admin['all_tested_curr'] > 0, 'sir_informative'] = \
+                    gdf_admin.loc[gdf_admin['all_tested_curr'] > 0].index.map(df['sir_informative'])
 
-            # Mark structural zeros as "No Data"
-            gdf_admin.loc[gdf_admin['site_present'] == False, 'classification'] = 'No Data'
-
-            # Generate diagnostics
-            ppc = pm.sample_posterior_predictive(trace, model=model, progressbar=False, random_seed=self.cfg.get('random_seed', 42))
-            diagnostics = self._calculate_diagnostics(trace, df_active, level_name, national_rate, model, ppc, False)
-            diagnostics['model_type'] = 'Hurdle Binomial'
-            diagnostics['n_structural_zeros'] = int(n_structural_zeros)
-            diagnostics['pct_structural_zeros'] = float(pct_structural)
-            diagnostics['n_active_sites'] = int(n_active)
-
-            logger.info(f"[OK] Hurdle model completed: {n_active} active sites, {n_structural_zeros} structural zeros")
-
+            logger.info("Generating posterior predictive samples...")
+            with saved_model:
+                ppc = pm.sample_posterior_predictive(
+                    trace, progressbar=False, random_seed=self.cfg.get('random_seed', 42))
+            diagnostics = self._calculate_diagnostics(
+                trace, df, level_name, national_rate, saved_model, ppc, convergence_fatal)
+            diagnostics['model'] = saved_model
+            diagnostics['trace'] = trace
+            diagnostics['y_obs'] = y
+            diagnostics['ppc'] = ppc
+            diagnostics['model_type'] = 'Joint Two-Period Beta-Binomial'
             return gdf_admin, diagnostics
 
-        except Exception as e:
-            logger.error(f"Hurdle model failed: {e}")
+        except (ValueError, RuntimeError, KeyError) as e:
+            logger.error(f"Two-period model failed: {e}")
             logger.error(traceback.format_exc())
             return gdf_admin, None
-
-
-# =============================================================================
-# BAYESIAN WITH COVARIATES ANALYZER

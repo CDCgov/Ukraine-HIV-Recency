@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.patches import Patch
 
+from pipeline.constants import MAP_STRINGS_UA
 from pipeline.reporting.oblast_labels import add_oblast_labels
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ def render_reliability_map(cfg, gdf_oblast_opt, output_path, gdf_admin: gpd.GeoD
         logger.warning(f"reliability_category column not found - skipping reliability map")
         return None
 
-    ua = cfg.get('map_strings_ua', {}) if lang == 'ua' else {}
+    ua = cfg.get('map_strings_ua', MAP_STRINGS_UA) if lang == 'ua' else {}
 
     fig, ax = plt.subplots(figsize=(14, 14))
 

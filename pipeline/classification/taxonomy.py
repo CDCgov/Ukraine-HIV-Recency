@@ -38,6 +38,24 @@ HOTSPOT_LABELS = frozenset({
 })
 
 
+# Minimum current-window recent events required to declare ANY increase-hotspot.
+# One recent case against a near-zero (floored) historical baseline inflates the
+# SIR ratio into a spurious "Emerging hotspot" -- the same failure mode as a
+# zero-count territory, one tier up. Requiring at least this many current events
+# keeps a rise-vs-history call from resting on a single observation. This is the
+# presence half of Fu 2023's presence x intensity view of a hotspot.
+MIN_HOTSPOT_CURRENT_EVENTS = 2
+
+
+# Label for a territory that is elevated versus the national current rate but
+# whose local history is too thin (``sir_informative == False``) to support a
+# trend call. It is deliberately NOT in HOTSPOT_LABELS: the elevation is real
+# and is surfaced as its own category (and via the watch-list rate axis), but it
+# is not counted as a confirmed hotspot because the "rising / stable" claim
+# would rest on a national-dominated, not own-history-driven, SIR axis.
+ELEVATED_TREND_UNCERTAIN = "Elevated vs national (trend uncertain)"
+
+
 # Full SIR/SMR label set with stable diagnostics keys.
 SMR_SIR_LABELS = (
     ('Established hotspot',        'established_hotspot'),
@@ -46,6 +64,7 @@ SMR_SIR_LABELS = (
     ('Declining from high-burden', 'declining_from_high_burden'),
     ('Emerging decrease',          'emerging_decrease'),
     ('Significant decrease',       'significant_decrease'),
+    ('Elevated vs national (trend uncertain)', 'elevated_trend_uncertain'),
     ('Normal',                     'normal'),
 )
 
@@ -96,6 +115,17 @@ def classify_with_smr_sir(row: pd.Series,
     if 'all_tested_curr' in row and row['all_tested_curr'] == 0:
         return "No Data"
 
+    # Cold-cell gate (mirror of the hotspot presence gate). The increase/decrease
+    # axes describe a TREND, and a unit with no recent events in EITHER window has
+    # no trend to evaluate -- nothing to have risen or fallen from. Such a unit is
+    # Normal (grey), never a "decrease". A genuine fall (history had recent events,
+    # current has none) keeps its decrease label because recent_count_hist > 0.
+    _rc_curr = row.get('recent_count_curr', None)
+    _rc_hist = row.get('recent_count_hist', None)
+    if (_rc_curr is not None and _rc_hist is not None
+            and float(_rc_curr) == 0 and float(_rc_hist) == 0):
+        return "Normal"
+
     smr_high = float(row.get('exc_prob_smr', 0.0)) > cutoff_smr_high
     sir_high = float(row.get('exc_prob_sir', 0.0)) > cutoff_sir_high
     smr_low = float(row.get('exc_prob_smr_low', 0.0)) > cutoff_smr_low
@@ -104,6 +134,13 @@ def classify_with_smr_sir(row: pd.Series,
     smr_state = 'high' if smr_high else ('low' if smr_low else 'norm')
     sir_state = 'high' if sir_high else ('low' if sir_low else 'norm')
 
+    # The trend axis (rising / stable / falling) is read solely from the
+    # FDR-controlled change exceedance -- P(delta > 0) / P(delta < 0) under the
+    # joint two-period model. There is no raw-ratio "lean" fallback: an elevated
+    # hex whose change cannot be confirmed on the available events stays
+    # "Stable high-burden" rather than being assigned a direction on a point
+    # estimate. This keeps every axis on the same parity standard (compared to
+    # the reference, no multiplier) and invents no trend the data cannot support.
     label_map = {
         ('high', 'high'): "Established hotspot",
         ('high', 'norm'): "Emerging hotspot",
@@ -115,7 +152,37 @@ def classify_with_smr_sir(row: pd.Series,
         ('low',  'norm'): "Emerging decrease",
         ('low',  'low'):  "Significant decrease",
     }
-    return label_map.get((sir_state, smr_state), "Normal")
+    label = label_map.get((sir_state, smr_state), "Normal")
+
+    # Presence gate (the presence half of Fu 2023's presence x intensity view).
+    # The SIR axis compares the current rate to a territory's OWN history; when
+    # that history is a zero (or a thin count) on a large test denominator, the
+    # Empirical-Bayes baseline collapses to the floor and SIR is inflated by
+    # construction, so a territory with no -- or a single -- recent event in the
+    # current window is misclassified as an "Emerging hotspot". A recency hotspot
+    # must therefore rest on an actual current signal: at least
+    # ``MIN_HOTSPOT_CURRENT_EVENTS`` recent events this window.
+    if label in HOTSPOT_LABELS:
+        rc = row.get('recent_count_curr', None)
+        too_few_events = rc is not None and float(rc) < MIN_HOTSPOT_CURRENT_EVENTS
+        if too_few_events:
+            return "Normal"
+
+        # SIR-informativeness gate. The SIR (trend) axis compares the current
+        # rate to the territory's OWN history, and that comparison is trustworthy
+        # only when the historical test volume exceeds the Empirical-Bayes
+        # concentration K (``sir_informative``). When it does not, the SIR axis is
+        # national-dominated rather than own-history-driven, so a rise/stability
+        # claim cannot rest on it. A territory still elevated vs the national
+        # current rate (SMR high) keeps that level flag with the trend explicitly
+        # withheld; one whose only signal was the now-unreliable rise (SMR not
+        # high, e.g. "Emerging hotspot") collapses to Normal. Decrease labels are
+        # left untouched -- the concern is over-calling rises on thin history.
+        sir_informative = row.get('sir_informative', None)
+        if (sir_informative is not None and not pd.isna(sir_informative)
+                and not bool(sir_informative)):
+            return ELEVATED_TREND_UNCERTAIN if smr_high else "Normal"
+    return label
 
 
 def is_hotspot(df_in: pd.DataFrame) -> pd.Series:

@@ -177,7 +177,7 @@ def compute_sigma_hyperprior(cfg: Dict[str, Any],
 
     # Optional, explicit per-resolution prior tightening from config. The
     # previous multiplier keyed off substrings of the level *name* and was
-    # silently inert for the actual H3 level names ("Hex_Res4" never matched
+    # silently inert for the actual H3 level names (a specific hex name never matched
     # the "Hex_Res_4" test), so it never fired for the hex-only pipeline.
     # Replaced by an opt-in config map (audit Mi1); absent config -> 1.0x.
     res_mult = cfg.get('bayesian', {}).get('resolution_sigma_multiplier', {})
@@ -252,6 +252,7 @@ def extract_posterior_summaries(cfg: Dict[str, Any],
         p_samples, df, national_rate,
         smr_threshold=float(_dt.get('smr_threshold', 2.0)),
         sir_threshold=float(_dt.get('sir_threshold', 1.5)),
+        leave_one_out=bool((cfg or {}).get('smr_leave_one_out', False)),
     )
     df['national_rate_curr'] = _smr_sir['national_rate_curr']
     df['baseline_rate_eb'] = _smr_sir['baseline_rate_eb']

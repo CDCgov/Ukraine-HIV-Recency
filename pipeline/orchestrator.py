@@ -39,12 +39,12 @@ import pandas as pd
 import pymc as pm
 from dateutil.relativedelta import relativedelta
 
-from pipeline.analyzers import BayesianAnalyzer, BayesianCovariatesAnalyzer
+from pipeline.analyzers import BayesianAnalyzer
 from pipeline.classification import (
     HOTSPOT_LABELS,
     is_hotspot as _is_hotspot,
 )
-from pipeline.config import InteractiveConfig, ModelConfigurationWizard
+from pipeline.config import InteractiveConfig
 from pipeline.config.models import BayesianConfig
 from pipeline.constants import ANALYSIS_CONSTANTS, DEFAULT_CONFIG, PIPELINE_VERSION
 from pipeline.diagnostics import (
@@ -63,20 +63,17 @@ from pipeline.orchestration import (
     check_diagnostics as _orch_check_diagnostics,
     collect_current_results as _orch_collect_current_results,
     collect_dashboard_data as _orch_collect_dashboard_data,
-    create_bayesian_covariates_plots as _orch_create_bayesian_covariates_plots,
     create_bayesian_plots as _orch_create_bayesian_plots,
     create_summary_dashboard as _orch_create_summary_dashboard,
     finalize_model_choice as _orch_finalize_model_choice,
     generate_audit_trail_reports as _orch_generate_audit_trail_reports,
-    generate_comparison_report as _orch_generate_comparison_report,
     generate_iterative_hotspots_report as _orch_generate_iterative_hotspots_report,
+    generate_group_attribution_report as _orch_generate_group_attribution_report,
     generate_model_comparison as _orch_generate_model_comparison,
     generate_recommendations as _orch_generate_recommendations,
-    interpret_bayesian_covariates_diagnostics as _orch_interpret_bayesian_covariates_diagnostics,
     interpret_bayesian_diagnostics as _orch_interpret_bayesian_diagnostics,
     prepare_iterative_windows as _orch_prepare_iterative_windows,
     resolve_paths as _orch_resolve_paths,
-    run_bayesian_covariates_dispatch as _orch_run_bayesian_covariates_dispatch,
     run_bayesian_dispatch as _orch_run_bayesian_dispatch,
     run_historical_comparison as _orch_run_historical_comparison,
     run_interactive_setup as _orch_run_interactive_setup,
@@ -154,8 +151,7 @@ class PipelineOrchestrator:
     """Orchestrates the complete analysis pipeline."""
 
     def __init__(self, config_path: Optional[str] = None, run_timestamp: Optional[str] = None,
-                 output_base: Optional[Path] = None, use_loo_ic: bool = False,
-                 use_hurdle: bool = False, hurdle_threshold: float = 70.0):
+                 output_base: Optional[Path] = None):
         """Build the orchestrator and fix the output-directory layout.
 
         Args:
@@ -165,20 +161,13 @@ class PipelineOrchestrator:
             output_base: pre-made timestamped session directory; when given it
                 is used verbatim (``main()`` already created it), otherwise the
                 path is derived from ``config['output_dir']`` on first write.
-            use_loo_ic: select models via LOO-IC instead of the heuristic score.
-            use_hurdle: enable the Truncated-Binomial branch for sparse data.
-            hurdle_threshold: structural-zero percentage that triggers it.
         """
         self.config = self._load_config(config_path)
         self.bayesian = None
-        self.bayesian_cov = None
         self.results = {}
         self.period_str = None
         self.run_timestamp = run_timestamp  # Set from main() for consistent timestamping
         self.model_comparison_data = []  # Store model comparison data
-        self.use_loo_ic = use_loo_ic  # Use LOO-IC for model selection
-        self.use_hurdle = use_hurdle  # Use Hurdle model for sparse data
-        self.hurdle_threshold = hurdle_threshold  # Threshold for structural zeros %
 
         # Decision Audit Trail - will be initialized per level
         self.audit_trails = {}  # Dictionary to store audit trail for each level
@@ -199,8 +188,8 @@ class PipelineOrchestrator:
         Creates correct path for saving file in new structure.
 
         Args:
-            model_type: "bayesian", "bayesian_covariates", or "summary"
-            level_name: "Community", "District", "Oblast", "Hex_Res3", "Hex_Res4", "Hex_Res5"
+            model_type: "bayesian" or "summary"
+            level_name: "Community", "District", "Oblast", "Hex_Res3"
             filename: File name (e.g., "Map_Community_202601.png")
             is_hex: True if this is hexagonal grid
 
@@ -224,7 +213,7 @@ class PipelineOrchestrator:
             # Model files
             territory_type = "hex" if is_hex else "admin"
 
-            # For hex: level_name = "Hex_Res4" -> "res4"
+            # For hex: level_name = "Hex_Res3" -> "res3"
             # For admin: level_name = "Community" -> "Community"
             if is_hex:
                 level_dir = level_name.replace("Hex_Res", "res").lower()
@@ -237,62 +226,6 @@ class PipelineOrchestrator:
         output_path.mkdir(parents=True, exist_ok=True)
 
         return output_path / filename
-
-    def _run_loo_ic_model_selection(self, df_analysis: pd.DataFrame, gdf: gpd.GeoDataFrame,
-                                     level_name: str, national_rate: float,
-                                     national_se: float) -> Dict[str, Any]:
-        """Compare Binomial vs Beta-Binomial by LOO-IC on the active territories.
-
-        Fits both likelihoods on the same exchangeable mean structure and uses
-        leave-one-out cross-validation to test whether the data actually
-        support the extra-binomial variation, or whether the overdispersion
-        parameter is essentially unidentified on these small counts (audit
-        C3-B / Mo2). These are dedicated diagnostic fits, separate from the
-        production fit, so they do not affect the classification or maps.
-
-        The heuristic specification summary is still produced (it drives the
-        ``Specification_Analysis`` report and surfaces zero-inflation /
-        outlier flags); the LOO verdict is merged into it.
-
-        Args:
-            df_analysis: active territories (``all_tested_curr > 0``).
-            gdf: full GeoDataFrame (unused here; kept for signature stability).
-            level_name: level being analysed (for logging).
-            national_rate / national_se: national baseline summaries.
-
-        Returns:
-            The specification-analysis dict, augmented with the LOO comparison
-            fields and a data-driven ``recommended_model`` string.
-        """
-        from pipeline.diagnostics.overdispersion import compare_binomial_betabinomial
-
-        analysis = AutoSpecificationSystem.recommend_specification(
-            df_analysis,
-            y_col='recent_count_curr',
-            n_col='all_tested_curr'
-        )
-
-        try:
-            loo_result = compare_binomial_betabinomial(df_analysis, national_rate, self.config)
-            analysis.setdefault('data_analysis', {}).update(loo_result)
-
-            best = loo_result.get('loo_best_model')
-            if best is None:
-                analysis.setdefault('warnings', []).append(
-                    f"LOO comparison unavailable: {loo_result.get('error', 'unknown error')}")
-            elif loo_result.get('overdispersion_supported'):
-                analysis['recommended_model'] = (
-                    'Beta-Binomial (overdispersion supported by LOO)')
-            else:
-                analysis['recommended_model'] = (
-                    'Beta-Binomial (Binomial not rejected by LOO; overdispersion weak — '
-                    'Beta-Binomial nests it harmlessly)')
-        except (ValueError, KeyError, AttributeError, RuntimeError) as e:
-            logger.error(f"LOO-IC model comparison failed: {e}")
-            analysis.setdefault('warnings', []).append(f"LOO-IC comparison failed: {e}")
-
-        return analysis
-
     def _validate_config(self, config: Dict) -> Dict:
         """Thin wrapper around :func:`pipeline.orchestration.validate_config`."""
         return _orch_validate_config(config, bayesian_config_cls=BayesianConfig)
@@ -332,9 +265,8 @@ class PipelineOrchestrator:
         mode_suffix = 'hex'
         period_str = self.period_str
 
-        # Initialize analyzers with orchestrator
+        # Initialize the analyzer (the two-period Bayesian detector).
         bayesian = BayesianAnalyzer(self.config, mode_suffix, orchestrator=self)
-        bayesian_cov = BayesianCovariatesAnalyzer(self.config, mode_suffix, orchestrator=self)
 
         # Store current audit trail in orchestrator for access by analyzers
         self.current_audit_trail = None
@@ -358,9 +290,8 @@ class PipelineOrchestrator:
 
         all_summaries = []
 
-        # Initialize interpretation variables to avoid locals() issues
+        # Initialize interpretation variable to avoid locals() issues
         bayesian_interpretation = None
-        bayesian_cov_interpretation = None
 
         for level in levels:
             logger.info("\n" + "-" * 40)
@@ -397,7 +328,7 @@ class PipelineOrchestrator:
                     logger.warning("[WARN] CRITICAL: VERY LARGE GRID DETECTED")
                     logger.warning(f"[WARN] Territories: {n_territories}")
                     logger.warning(f"[WARN] Estimated time for Bayesian models: {n_territories/100:.0f}-{n_territories/50:.0f} minutes")
-                    logger.warning("[WARN] Recommendation: Use H3 Res 4 instead")
+                    logger.warning("[WARN] Recommendation: Use the coarser H3 Res 3 (the standardised grid) instead")
                     logger.warning("=" * 80)
 
                     # Interactive confirmation if running in terminal
@@ -408,11 +339,9 @@ class PipelineOrchestrator:
                             if response != 'y':
                                 logger.info("User chose to skip Bayesian models for this level")
                                 bayesian = None
-                                bayesian_cov = None
                         except (EOFError, KeyboardInterrupt):
                             logger.info("Skipping Bayesian models for this level")
                             bayesian = None
-                            bayesian_cov = None
                     else:
                         logger.warning("Non-interactive mode: proceeding with Bayesian models (may take hours)")
 
@@ -421,60 +350,31 @@ class PipelineOrchestrator:
 
             _orch_assess_data_quality(audit_trail, gdf)
 
-            # Cache original CLI args on first level; reuse on subsequent levels
-            if not hasattr(self, '_original_cli_use_hurdle'):
-                self._original_cli_use_hurdle = self.use_hurdle
-                self._original_cli_hurdle_threshold = self.hurdle_threshold
-                self._original_cli_use_loo_ic = self.use_loo_ic
-
-            cli_args = {
-                'use_hurdle': self._original_cli_use_hurdle,
-                'hurdle_threshold': self._original_cli_hurdle_threshold,
-                'use_loo_ic': self._original_cli_use_loo_ic
-            }
-
             _wiz = _orch_run_wizard_and_record_decisions(
-                audit_trail, gdf, level_name, cli_args, self.config
+                audit_trail, gdf, level_name, self.config
             )
-            level_use_hurdle = _wiz['use_hurdle']
-            level_hurdle_threshold = _wiz['hurdle_threshold']
-            level_use_loo_ic = _wiz['use_loo_ic']
             pct_structural_zeros = _wiz['pct_structural_zeros']
-
-            # Manual model selection flags
-            _manual_model = self.config.get('manual_model_selection', 'auto')
-            _force_bayesian_only  = (_manual_model == 'bayesian')
-            _force_bayes_cov_only = (_manual_model == 'bayesian_covariates')
 
             spec_analysis, recommended_model = _orch_analyze_specification(
                 self, gdf, level_name, period_str,
-                national_rate, national_se, level_use_loo_ic, audit_trail,
+                national_rate, national_se, audit_trail,
             )
 
-            # === Apply manual model selection override ===
-            if _force_bayesian_only or _force_bayes_cov_only:
-                _label = 'Bayesian only' if _force_bayesian_only else 'Bayesian Covariates only'
-                logger.info(f"MANUAL MODEL SELECTION: {_label}")
-
-            # === Bayesian Analysis ===
+            # === Bayesian detector (the sole model) ===
             gdf_bayes, diag_bayes = _orch_run_bayesian_dispatch(
                 bayesian, gdf, level_name, national_rate, national_se,
-                level_use_hurdle, level_hurdle_threshold,
-                _force_bayes_cov_only, self.config,
+                self.config,
             )
 
             if diag_bayes:
                 bayesian.diagnostics.append(diag_bayes)
 
-            # === Interpret Bayesian diagnostics ===
             bayesian_interpretation = _orch_interpret_bayesian_diagnostics(
                 self, diag_bayes, level_name, period_str,
             )
-
-            # === Visualizations for Bayesian ===
             _orch_create_bayesian_plots(self, diag_bayes, level_name, period_str, plotter)
 
-            if not _force_bayes_cov_only and diag_bayes is not None:
+            if diag_bayes is not None:
                 gdf_bayes = ReliabilityScoreCalculator.calculate_territory_scores(gdf_bayes, diag_bayes, self.config)
                 bayesian.plot_map(gdf_bayes, level_name, start, end, b_start, b_end, "Bayesian",
                                   diagnostics=diag_bayes)
@@ -482,46 +382,13 @@ class PipelineOrchestrator:
                 bayesian.plot_reliability_map(gdf_bayes, level_name, start, end, "Bayesian")
                 bayesian.plot_watchlist_map(gdf_bayes, level_name, start, end, "Bayesian")
 
-            if not _force_bayes_cov_only:
-                model_used, final_diag, final_gdf = _orch_finalize_model_choice(
-                    diag_bayes, gdf_bayes, level_name, 'Bayesian',
-                    model_used, final_diag, final_gdf, all_summaries,
-                    report_kept_previous=False,
-                )
-
-            gdf_bayes_cov, diag_bayes_cov = _orch_run_bayesian_covariates_dispatch(
-                bayesian, bayesian_cov, gdf, gdf_cases, level, level_name,
-                start, end, b_start, b_end, national_rate, national_se,
-                _force_bayesian_only, self.config,
-            )
-
-            bayesian_cov_interpretation = _orch_interpret_bayesian_covariates_diagnostics(
-                self, diag_bayes_cov, level_name, period_str,
-            )
-
-            _orch_create_bayesian_covariates_plots(self, diag_bayes_cov, level_name, period_str, plotter)
-
-            if diag_bayes_cov is not None:
-                gdf_bayes_cov = ReliabilityScoreCalculator.calculate_territory_scores(gdf_bayes_cov, diag_bayes_cov, self.config)
-                bayesian_cov.plot_map(gdf_bayes_cov, level_name, start, end, b_start, b_end,
-                                      "Bayesian with Covariates", diagnostics=diag_bayes_cov)
-                bayesian_cov.save_report(gdf_bayes_cov, level_name, period_str, diagnostics=diag_bayes_cov)
-                bayesian_cov.plot_reliability_map(gdf_bayes_cov, level_name, start, end, "Bayesian with Covariates")
-                bayesian_cov.plot_watchlist_map(gdf_bayes_cov, level_name, start, end, "Bayesian with Covariates")
-
             model_used, final_diag, final_gdf = _orch_finalize_model_choice(
-                diag_bayes_cov, gdf_bayes_cov, level_name, 'Bayesian with Covariates',
+                diag_bayes, gdf_bayes, level_name, 'Bayesian',
                 model_used, final_diag, final_gdf, all_summaries,
-                report_kept_previous=True,
+                report_kept_previous=False,
             )
 
-            _orch_generate_comparison_report(
-                self, level_name, period_str,
-                bayesian_interpretation, bayesian_cov_interpretation,
-                final_diag, final_gdf,
-            )
-
-            # Store comparison data
+            # Store the detector's result for the run-level summary.
             self._add_model_comparison(level_name, model_used, final_diag)
 
             # Store results for dashboard
@@ -535,11 +402,12 @@ class PipelineOrchestrator:
             else:
                 logger.warning(f"No valid model results for {level_name} - skipping dashboard data")
 
-        # Save diagnostics
-        if bayesian.diagnostics:
-            bayesian.save_diagnostics(level_name, period_str)
-        if bayesian_cov.diagnostics:
-            bayesian_cov.save_diagnostics(level_name, period_str)
+            # Per-level diagnostics workbook, written INSIDE the loop so every
+            # level's folder gets its own file. This previously ran once after the
+            # loop, so with more than one level only the LAST level received a
+            # Diagnostics workbook.
+            if diag_bayes:
+                bayesian.save_diagnostics(level_name, period_str, diagnostics_list=[diag_bayes])
 
         _orch_generate_audit_trail_reports(self, period_str)
 
@@ -559,6 +427,14 @@ class PipelineOrchestrator:
         self.run_timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
         logger.info(f"Starting analysis run: {self.run_timestamp}")
 
+        # Derive the period tag from the analysis window when the interactive
+        # setup did not set it (config-driven / non-interactive runs), so report
+        # filenames read Report_..._YYYYMM.xlsx rather than ..._None.xlsx.
+        if not self.period_str:
+            _ap = self.config.get('analysis_period', {})
+            if _ap.get('start'):
+                self.period_str = pd.to_datetime(_ap['start']).strftime('%Y%m')
+
         # Check if iterative mode
         analysis_type = self.config.get('analysis_type', 'standard')
 
@@ -567,11 +443,11 @@ class PipelineOrchestrator:
             self.run_iterative_analysis()
             return
 
-        # Standard mode — run each selected level (H3 resolutions and/or the
-        # ADM1 oblast level). ``analysis_levels`` is a mix of ints (hex
-        # resolutions) and the string 'Oblast'; falls back to the hex
-        # resolutions for older configs.
-        levels = self.config.get('analysis_levels') or self.config.get('hex_resolutions', [4])
+        # Standard mode — run each selected level (the res3 H3 hexagons and/or
+        # the ADM1 oblast level). ``analysis_levels`` is a mix of ints (hex
+        # resolutions) and the string 'Oblast'; falls back to res3 for older
+        # configs (the pipeline standardised on res3 + adm1).
+        levels = self.config.get('analysis_levels') or self.config.get('hex_resolutions', [3])
         self.run_for_mode('analysis', levels)
 
         # Generate model comparison
@@ -579,6 +455,14 @@ class PipelineOrchestrator:
 
         # Generate recommendations
         self.generate_recommendations()
+
+        # Supplementary oblast-level risk-group attribution + SMR (never fatal).
+        try:
+            ga_path = self.get_output_path("summary", "All_Levels",
+                                           "Group_Attribution_Report.xlsx", is_hex=False)
+            _orch_generate_group_attribution_report(self.config, Path(ga_path))
+        except Exception as e:  # noqa: BLE001 -- supplementary; must not abort the run
+            logger.warning(f"Group attribution report failed (non-fatal): {e}")
 
         _orch_create_summary_dashboard(self, SummaryDashboard)
         _orch_run_historical_comparison(self, HistoricalComparison, PIPELINE_VERSION)
@@ -606,13 +490,13 @@ class PipelineOrchestrator:
         - Baseline period: 12 months
         - Step: 1 month backward
         - Model: Bayesian non-centered only
-        - Level: Res4 hexagons only
+        - Level: Res3 hexagons only
         """
         logger.info("\n" + "=" * 60)
         logger.info("ITERATIVE HOTSPOT SEARCH")
         logger.info("=" * 60)
 
-        # Load cases, attach H3 res-4 IDs, filter, and build sliding windows
+        # Load cases, attach H3 res3 IDs, filter, and build sliding windows
         df_cases, windows = _orch_prepare_iterative_windows(self.config)
 
         # Create output directory for iterative results
@@ -626,7 +510,7 @@ class PipelineOrchestrator:
         # Run the full sliding-window sweep once per selected level (each level
         # — an H3 resolution int or 'Oblast' — is independent and gets its own
         # calibration, per-window maps and aggregated report).
-        levels = self.config.get('iterative_levels') or [self.config.get('iterative_resolution', 4)]
+        levels = self.config.get('iterative_levels') or [self.config.get('iterative_resolution', 3)]
 
         for lvl in levels:
             self.config['iterative_resolution'] = lvl
@@ -660,8 +544,6 @@ class PipelineOrchestrator:
                     self._iterative_skipped_windows, iterative_dir, level_name=level_name)
             else:
                 logger.warning(f"No hotspots found in any iteration for {level_name}")
-        else:
-            logger.warning("No hotspots found in any iteration")
 
     def _run_bayesian_for_window(self, window: Dict) -> Optional[gpd.GeoDataFrame]:
         """
@@ -696,38 +578,23 @@ class PipelineOrchestrator:
             national_rate, national_se = bayesian.calculate_national_baseline(gdf_cases, b_start, b_end)
 
             # Load geometry at the configured iterative level: an H3 resolution
-            # int (res3 / res4) or the string 'Oblast' (ADM1).
-            lvl = self.config.get('iterative_resolution', 4)
+            # int (res3) or the string 'Oblast' (ADM1).
+            lvl = self.config.get('iterative_resolution', 3)
             level_name = f'Hex_Res{lvl}' if isinstance(lvl, int) else str(lvl)
             gdf = bayesian.load_geodata(lvl)
 
             # Aggregate stats
             gdf = bayesian.aggregate_stats(gdf, gdf_cases, start, end, b_start, b_end)
 
-            # Use original CLI parameters for iterative mode
-            iter_use_hurdle = self._original_cli_use_hurdle if hasattr(self, '_original_cli_use_hurdle') else self.use_hurdle
-            iter_hurdle_threshold = self._original_cli_hurdle_threshold if hasattr(self, '_original_cli_hurdle_threshold') else self.hurdle_threshold
-
-            # Run Bayesian model (with Hurdle option)
-            if iter_use_hurdle and 'site_present' in gdf.columns:
-                n_total = len(gdf)
-                n_structural_zeros = (~gdf['site_present']).sum()
-                pct_structural = (n_structural_zeros / n_total) * 100
-
-                if pct_structural >= iter_hurdle_threshold:
-                    logger.info(f"Iteration {window['iteration']}: Using Truncated Binomial (active sites) ({pct_structural:.1f}% structural zeros)")
-                    gdf_result, diagnostics = bayesian.run_hurdle_model(gdf, level_name, national_rate)
-                else:
-                    logger.info(f"Iteration {window['iteration']}: Using standard Bayesian ({pct_structural:.1f}% structural zeros)")
-                    gdf_result, diagnostics = bayesian.run_model(
-                        gdf, level_name, national_rate, national_se, parametrization='non_centered'
-                    )
+            # Run the Bayesian model: the joint two-period detector when enabled,
+            # otherwise the standard hierarchical single-window model.
+            if self.config.get('two_period_model', False):
+                logger.info(f"Iteration {window['iteration']}: Using joint two-period Beta-Binomial model")
+                gdf_result, diagnostics = bayesian.run_two_period_model(
+                    gdf, level_name, national_rate, national_se, parametrization='non_centered'
+                )
             else:
-                if not iter_use_hurdle:
-                    logger.info(f"Iteration {window['iteration']}: Using standard Bayesian (Hurdle disabled)")
-                elif 'site_present' not in gdf.columns:
-                    logger.warning(f"Iteration {window['iteration']}: site_present missing - using standard Bayesian")
-
+                logger.info(f"Iteration {window['iteration']}: Using standard Bayesian model")
                 gdf_result, diagnostics = bayesian.run_model(
                     gdf, level_name, national_rate, national_se, parametrization='non_centered'
                 )
