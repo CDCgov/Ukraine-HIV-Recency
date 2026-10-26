@@ -210,8 +210,10 @@ def aggregate_stats(cfg, testing_sites_df, gdf_admin: gpd.GeoDataFrame, gdf_case
     gdf_admin['n_active_months_curr'] = 0
     gdf_admin['n_active_months_hist'] = 0
 
-    for idx in range(len(gdf_admin)):
-        territory_geom = gdf_admin.iloc[idx].geometry
+    # Iterate by index label: geometry is read and results written with the
+    # same label, so a non-contiguous index cannot misplace a territory's values.
+    for idx in gdf_admin.index:
+        territory_geom = gdf_admin.geometry.loc[idx]
 
         # Filter cases for this territory
         territory_cases_curr = curr_all[curr_all.geometry.within(territory_geom)]
@@ -243,7 +245,7 @@ def aggregate_stats(cfg, testing_sites_df, gdf_admin: gpd.GeoDataFrame, gdf_case
     gdf_admin['network_stability_z'] = 0.0
     gdf_admin['intensity_change_pct'] = 0.0
 
-    for idx in range(len(gdf_admin)):
+    for idx in gdf_admin.index:
         intensity_curr = gdf_admin.at[idx, 'testing_intensity_curr']
         intensity_hist = gdf_admin.at[idx, 'testing_intensity_hist']
 
