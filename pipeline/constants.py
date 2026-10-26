@@ -303,7 +303,7 @@ MAP_STRINGS_UA = {
         "Stable high-burden":         "Стабільно високий рівень",
         "Declining from high-burden": "Спад із високого рівня",
         "Emerging decrease":          "Ранній спад",
-        "Significant decrease":       "Значне зниження (рівень)",
+        "Below national":             "Нижче національного рівня",
         "Elevated vs national (trend uncertain)": "Підвищено проти країни (тренд невизначений)",
         "Normal":                     "Без сигналу",
         "No Data": "Немає даних",

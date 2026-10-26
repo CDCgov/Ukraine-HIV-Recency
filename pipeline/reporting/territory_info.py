@@ -13,6 +13,58 @@ from __future__ import annotations
 from typing import Any, Callable, Dict
 
 import geopandas as gpd
+import pandas as pd
+
+
+def _unit_at_centroid(point_gdf: gpd.GeoDataFrame, gdf_units: gpd.GeoDataFrame,
+                      sort_col: str):
+    """Admin-unit row containing the hex centroid, or ``None`` if none does.
+
+    A centroid on a shared boundary can match more than one polygon; sorting
+    by ``sort_col`` makes the pick content-deterministic.
+    """
+    match = gpd.sjoin(point_gdf, gdf_units, how='left', predicate='within')
+    if sort_col not in match.columns:
+        return None
+    match = match.sort_values(sort_col, na_position='last')
+    if len(match) == 0 or pd.isna(match.iloc[0][sort_col]):
+        return None
+    return match.iloc[0]
+
+
+def _community_for_border_hex(hex_geom, gdf_community: gpd.GeoDataFrame,
+                              site_points: gpd.GeoDataFrame):
+    """Community for a hex whose centroid lies outside Ukraine.
+
+    A border hex (centroid in the sea or across the state border) is named
+    after the community holding most of its testing sites -- e.g. the Odesa
+    and Kharkiv city hexes. A hex with no site inside falls back to the
+    community with the largest overlap.
+    """
+    if site_points is not None and len(site_points):
+        inside = site_points[site_points.within(hex_geom)]
+        if len(inside):
+            # Count by polygon index, not by name: community names repeat
+            # across oblasts (there is a Chernihivska hromada in Zaporizka).
+            hits = gpd.sjoin(inside, gdf_community, how='inner', predicate='within')
+            if len(hits):
+                top = hits['index_right'].value_counts().sort_index().idxmax()
+                return gdf_community.loc[top]
+    overlap = gdf_community.geometry.intersection(hex_geom).area
+    if len(overlap) == 0 or overlap.max() <= 0:
+        return None
+    return gdf_community.loc[overlap.idxmax()]
+
+
+def _load_site_points(cfg, crs):
+    """Testing-site locations as points in ``crs`` (``None`` if unavailable)."""
+    try:
+        sites = pd.read_excel(cfg['excel_path'], sheet_name='testing_sites')
+    except (ValueError, IOError, KeyError):
+        return None
+    pts = gpd.GeoDataFrame(sites, geometry=gpd.points_from_xy(sites['longitude'], sites['latitude']),
+                           crs='EPSG:4326')
+    return pts.to_crs(crs)
 
 
 def add_admin_territory_info(cfg, load_geodata_fn, gdf: gpd.GeoDataFrame, level_name: str) -> gpd.GeoDataFrame:
@@ -106,47 +158,46 @@ def add_hex_territory_info(cfg, load_geodata_fn, gdf: gpd.GeoDataFrame, level_na
     gdf['oblast_en'] = ''
     gdf['oblast_ua'] = ''
 
+    site_points = None  # loaded only if a border hex needs it
+
     for idx, row in gdf.iterrows():
         # Get centroid
         centroid = row.geometry.centroid
         point_gdf = gpd.GeoDataFrame([{'geometry': centroid}], geometry='geometry', crs=gdf.crs)
 
-        # Find community. A hex centroid sitting on a shared community boundary
-        # can match more than one polygon; sort by the community id so the pick
-        # is content-deterministic (``iloc[0]`` was otherwise order-dependent and
-        # could shuffle a hex's LABEL across runs -- counts were never affected).
-        community_match = gpd.sjoin(point_gdf, gdf_community, how='left', predicate='within')
-        if otg_col in community_match.columns:
-            community_match = community_match.sort_values(otg_col, na_position='last')
-        if len(community_match) > 0 and not community_match.iloc[0].isna().all():
-            if otg_col in community_match.columns:
-                comm_en = community_match.iloc[0][otg_col]
-                gdf.at[idx, 'community_en'] = comm_en
-                gdf.at[idx, 'hex_name_en'] = f"Hex in {comm_en}"
-            if 'ADM3_UA' in community_match.columns:
-                comm_ua = community_match.iloc[0]['ADM3_UA']
-                gdf.at[idx, 'community_ua'] = comm_ua
-                gdf.at[idx, 'hex_name_ua'] = f"Hexagon in {comm_ua}"
+        comm = _unit_at_centroid(point_gdf, gdf_community, otg_col)
+        district = _unit_at_centroid(point_gdf, gdf_district, rayon_col)
+        oblast = _unit_at_centroid(point_gdf, gdf_oblast, oblast_col)
 
-        # Find district (same deterministic tie-break on the rayon id).
-        district_match = gpd.sjoin(point_gdf, gdf_district, how='left', predicate='within')
-        if rayon_col in district_match.columns:
-            district_match = district_match.sort_values(rayon_col, na_position='last')
-        if len(district_match) > 0 and not district_match.iloc[0].isna().all():
-            if rayon_col in district_match.columns:
-                gdf.at[idx, 'district_en'] = district_match.iloc[0][rayon_col]
-            if 'ADM2_UA' in district_match.columns:
-                gdf.at[idx, 'district_ua'] = district_match.iloc[0]['ADM2_UA']
+        if comm is None:
+            # Border hex: name it from its sites, and take district / oblast
+            # from that same community so the three names stay consistent.
+            if site_points is None:
+                site_points = _load_site_points(cfg, gdf_community.crs)
+            comm = _community_for_border_hex(row.geometry, gdf_community, site_points)
+            if comm is not None:
+                district = comm if rayon_col in comm.index else district
+                oblast = comm if oblast_col in comm.index else oblast
 
-        # Find oblast (same deterministic tie-break on the oblast id).
-        oblast_match = gpd.sjoin(point_gdf, gdf_oblast, how='left', predicate='within')
-        if oblast_col in oblast_match.columns:
-            oblast_match = oblast_match.sort_values(oblast_col, na_position='last')
-        if len(oblast_match) > 0 and not oblast_match.iloc[0].isna().all():
-            if oblast_col in oblast_match.columns:
-                gdf.at[idx, 'oblast_en'] = oblast_match.iloc[0][oblast_col]
-            if 'ADM1_UA' in oblast_match.columns:
-                gdf.at[idx, 'oblast_ua'] = oblast_match.iloc[0]['ADM1_UA']
+        if comm is not None:
+            if otg_col in comm.index:
+                gdf.at[idx, 'community_en'] = comm[otg_col]
+                gdf.at[idx, 'hex_name_en'] = f"Hex in {comm[otg_col]}"
+            if 'ADM3_UA' in comm.index:
+                gdf.at[idx, 'community_ua'] = comm['ADM3_UA']
+                gdf.at[idx, 'hex_name_ua'] = f"Hexagon in {comm['ADM3_UA']}"
+
+        if district is not None:
+            if rayon_col in district.index:
+                gdf.at[idx, 'district_en'] = district[rayon_col]
+            if 'ADM2_UA' in district.index:
+                gdf.at[idx, 'district_ua'] = district['ADM2_UA']
+
+        if oblast is not None:
+            if oblast_col in oblast.index:
+                gdf.at[idx, 'oblast_en'] = oblast[oblast_col]
+            if 'ADM1_UA' in oblast.index:
+                gdf.at[idx, 'oblast_ua'] = oblast['ADM1_UA']
 
     return gdf
 

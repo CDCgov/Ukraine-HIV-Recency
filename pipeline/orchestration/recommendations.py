@@ -16,13 +16,14 @@ and the hotspot mask helper.
 from __future__ import annotations
 
 import glob
-import json
 import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Union
 
 import pandas as pd
+
+from pipeline.reporting.excel_report import REPORT_DISPLAY_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ def generate_recommendations(cfg, output_dir, recommendations_path, is_hotspot_f
         df_cases['test_date'] = pd.to_datetime(df_cases['test_date'])
 
         last_test = df_cases['test_date'].max()
-        analysis_end_raw = cfg.get('data', {}).get('end')
+        analysis_end_raw = cfg.get('analysis_period', {}).get('end')
         analysis_end = pd.to_datetime(analysis_end_raw) if analysis_end_raw else None
 
         recommendations.append("=" * 80)
@@ -102,23 +103,28 @@ def generate_recommendations(cfg, output_dir, recommendations_path, is_hotspot_f
 
     # Read all report files
     import glob
+    # Reports sit one folder below admin/ and hex/ (e.g. admin/Oblast/,
+    # hex/res3/), so search recursively.
     report_files = []
     for subdir in ['admin', 'hex']:
-        bayesian_reports = output_dir / 'bayesian' / subdir / 'Report_*.xlsx'
-        report_files.extend(glob.glob(str(bayesian_reports)))
+        bayesian_reports = output_dir / 'bayesian' / subdir / '**' / 'Report_*.xlsx'
+        report_files.extend(glob.glob(str(bayesian_reports), recursive=True))
 
     all_hotspots = []
 
     for report_file in report_files:
         try:
             df = pd.read_excel(report_file)
+            # The Excel report uses reader-facing column names; map them back
+            # to the internal names the hotspot mask and the row printer use.
+            df = df.rename(columns={v: k for k, v in REPORT_DISPLAY_NAMES.items()})
+            if 'classification_smr_sir' not in df.columns and 'classification' in df.columns:
+                df['classification_smr_sir'] = df['classification']
 
             # Hotspots from the detector's classification axis.
             hotspots = pd.DataFrame()
-            if 'classification' in df.columns and 'combined_z' in df.columns:
-                hotspots_traditional = df[is_hotspot_fn(df)].copy()
-                if len(hotspots_traditional) > 0:
-                    hotspots = pd.concat([hotspots, hotspots_traditional], ignore_index=True)
+            if 'classification_smr_sir' in df.columns:
+                hotspots = df[is_hotspot_fn(df)].copy()
 
             if len(hotspots) > 0:
                 # Determine level from filename
@@ -142,36 +148,28 @@ def generate_recommendations(cfg, output_dir, recommendations_path, is_hotspot_f
 
     if all_hotspots:
         df_all_hotspots = pd.concat(all_hotspots, ignore_index=True)
-        df_all_hotspots = df_all_hotspots.sort_values('combined_z', ascending=False)
+        if 'smr_median' in df_all_hotspots.columns:
+            df_all_hotspots = df_all_hotspots.sort_values('smr_median', ascending=False)
 
         recommendations.append(f"TOTAL HOTSPOTS FOUND: {len(df_all_hotspots)}")
         recommendations.append("")
-        recommendations.append("OBVIOUS INCREASE HOTSPOTS (Z > 2.0):")
+        recommendations.append("HOTSPOTS (detector taxonomy):")
         recommendations.append("-" * 80)
         recommendations.append("")
 
         for idx, (i, row) in enumerate(df_all_hotspots.iterrows(), 1):
-            recommendations.append(f"{idx}. ", )
-
-            # Name (English and Ukrainian)
-            if 'hex_name_en' in row and pd.notna(row['hex_name_en']):
-                recommendations.append(f"{row['hex_name_en']}")
-                if 'hex_name_ua' in row and pd.notna(row['hex_name_ua']):
-                    recommendations.append(f" ({row['hex_name_ua']})")
-            elif 'ADM3_EN' in row and pd.notna(row['ADM3_EN']):
-                recommendations.append(f"{row['ADM3_EN']}")
-                if 'community_ua' in row and pd.notna(row['community_ua']):
-                    recommendations.append(f" ({row['community_ua']})")
-            elif 'ADM2_EN' in row and pd.notna(row['ADM2_EN']):
-                recommendations.append(f"{row['ADM2_EN']}")
-                if 'district_ua' in row and pd.notna(row['district_ua']):
-                    recommendations.append(f" ({row['district_ua']})")
-            elif 'ADM1_EN' in row and pd.notna(row['ADM1_EN']):
-                recommendations.append(f"{row['ADM1_EN']}")
-                if 'oblast_ua' in row and pd.notna(row['oblast_ua']):
-                    recommendations.append(f" ({row['oblast_ua']})")
-
-            recommendations[-1] = ''.join(recommendations[-1:])  # Join last line
+            # Name (English and Ukrainian) on one line.
+            name = 'Unknown'
+            for en_col, ua_col in (('hex_name_en', 'hex_name_ua'), ('ADM3_EN', 'community_ua'),
+                                   ('ADM2_EN', 'district_ua'), ('ADM1_EN', 'oblast_ua')):
+                if en_col in row and pd.notna(row[en_col]):
+                    name = str(row[en_col])
+                    if ua_col in row and pd.notna(row[ua_col]):
+                        name += f" ({row[ua_col]})"
+                    break
+            recommendations.append(f"{idx}. {name}")
+            recommendations.append(f"   Level: {row['level']}")
+            recommendations.append(f"   Classification: {row['classification_smr_sir']}")
             recommendations.append("")
 
             # Parent territories
@@ -198,14 +196,20 @@ def generate_recommendations(cfg, output_dir, recommendations_path, is_hotspot_f
             n_recent = row.get('recent_count_curr', 0)
             prop = row.get('recent_proportion_curr', 0)
             national = row.get('national_baseline', 0)
-            z_score = row.get('combined_z', 0)
             deviation = row.get('deviation_pct', 0)
 
             recommendations.append(f"   Tests: {int(n_tests)}")
             recommendations.append(f"   Recent infections: {int(n_recent)} ({prop*100:.1f}%)")
             recommendations.append(f"   National baseline: {national*100:.1f}%")
             recommendations.append(f"   Deviation: {deviation:+.1f}%")
-            recommendations.append(f"   Z-score: {z_score:.2f}")
+            smr_med = row.get('smr_median')
+            if smr_med is not None and pd.notna(smr_med):
+                recommendations.append(
+                    f"   National reference ratio: {smr_med:.2f} "
+                    f"[{row.get('smr_lower', float('nan')):.2f}-{row.get('smr_upper', float('nan')):.2f}]")
+            rel = row.get('reliability_category')
+            if rel is not None and pd.notna(rel):
+                recommendations.append(f"   Reliability: {rel}")
 
             # Recommended level
             if 'recommended_level' in row and pd.notna(row['recommended_level']):
@@ -214,7 +218,7 @@ def generate_recommendations(cfg, output_dir, recommendations_path, is_hotspot_f
             recommendations.append("")
 
     else:
-        recommendations.append("No obvious increase hotspots found.")
+        recommendations.append("No hotspots found.")
         recommendations.append("")
 
     # === PART 2: MODEL DIAGNOSTICS ===
@@ -224,192 +228,36 @@ def generate_recommendations(cfg, output_dir, recommendations_path, is_hotspot_f
     recommendations.append("=" * 80)
     recommendations.append("")
 
-    # Read diagnostics from files
+    # One row per analysed level, read from the per-level Diagnostics
+    # workbooks (admin/<level>/, hex/<res>/). These are the Bayesian checks the
+    # run itself applies: R-hat, ESS, divergences and the overall verdict.
     diag_files = []
     for subdir in ['admin', 'hex']:
-        bayesian_diag_path = output_dir / 'bayesian' / subdir / 'Diagnostics_*.xlsx'
-        diag_files.extend(glob.glob(str(bayesian_diag_path)))
+        bayesian_diag_path = output_dir / 'bayesian' / subdir / '**' / 'Diagnostics_*.xlsx'
+        diag_files.extend(glob.glob(str(bayesian_diag_path), recursive=True))
 
-    # Collect diagnostics by category
-    admin_diagnostics = {}
-    hex_diagnostics = {}
-
-    for diag_file in diag_files:
+    n_levels = 0
+    for diag_file in sorted(diag_files):
         try:
             df = pd.read_excel(diag_file, sheet_name='Model Diagnostics')
-            for _, row in df.iterrows():
-                level = row.get('level', 'Unknown')
-                model_name = row.get('model_name', 'Bayesian')
-                converged = row.get('converged', False)
-                r2 = row.get('pseudo_r2', 0)
-                normal = row.get('residuals_normal', 'No')
-
-                diag_info = {
-                    'model': model_name,
-                    'converged': converged,
-                    'r2': r2,
-                    'normal': normal,
-                    'file': diag_file
-                }
-
-                # Categorize by admin or hex
-                if 'Hex' in level:
-                    hex_diagnostics[level] = diag_info
-                else:
-                    admin_diagnostics[level] = diag_info
-
-        except (IOError, json.JSONDecodeError, KeyError) as e:
+        except (IOError, ValueError, KeyError) as e:
             logger.warning(f"Could not read {diag_file}: {e}")
+            continue
+        for _, row in df.iterrows():
+            n_levels += 1
+            recommendations.append("-" * 60)
+            recommendations.append(f"Level: {row.get('level', 'Unknown')}")
+            recommendations.append("-" * 60)
+            recommendations.append(f"  Model: {row.get('model_name', 'Bayesian')}")
+            recommendations.append(f"  Territories: {row.get('n_territories', 'n/a')}")
+            recommendations.append(f"  Overall quality: {row.get('overall_quality', 'n/a')}")
+            recommendations.append(f"  Converged (R-hat < 1.01): {row.get('convergence_ok', 'n/a')}")
+            recommendations.append(f"  ESS adequate (> 400): {row.get('ess_adequate', 'n/a')}")
+            recommendations.append(f"  Divergences acceptable: {row.get('divergences_ok', 'n/a')}")
+            recommendations.append("")
 
-    # === ADMINISTRATIVE UNITS RECOMMENDATIONS ===
-    if admin_diagnostics:
-        recommendations.append("=" * 80)
-        recommendations.append("ADMINISTRATIVE UNITS - LEVEL RECOMMENDATIONS")
-        recommendations.append("=" * 80)
-        recommendations.append("")
-
-        admin_order = ['Community', 'District', 'Oblast']
-        admin_quality = {}
-
-        for level in admin_order:
-            if level in admin_diagnostics:
-                diag = admin_diagnostics[level]
-                converged = diag['converged']
-                r2 = diag['r2']
-                normal = diag['normal']
-                model = diag['model']
-
-                recommendations.append("-" * 60)
-                recommendations.append(f"Level: {level}")
-                recommendations.append("-" * 60)
-                recommendations.append(f"  Model Used: {model}")
-                recommendations.append(f"  Converged: {converged}")
-                if r2:
-                    recommendations.append(f"  Pseudo R²: {r2:.4f}")
-                recommendations.append(f"  Residuals Normal: {normal}")
-
-                # Quality score
-                quality_score = 0
-                if converged:
-                    quality_score += 1
-                if r2 and r2 > 0.05:
-                    quality_score += 2
-                if normal == 'Yes':
-                    quality_score += 1
-
-                admin_quality[level] = quality_score
-
-                if quality_score >= 3:
-                    recommendations.append(f"  [OK] Quality: GOOD")
-                elif quality_score >= 2:
-                    recommendations.append(f"  [WARN]  Quality: ACCEPTABLE")
-                else:
-                    recommendations.append(f"  [FAIL] Quality: POOR")
-                recommendations.append("")
-
-        # Overall recommendation for admin levels
-        recommendations.append("=" * 60)
-        recommendations.append("RECOMMENDED ADMINISTRATIVE LEVEL FOR DECISION-MAKING:")
-        recommendations.append("=" * 60)
-
-        if admin_quality:
-            best_level = max(admin_quality, key=admin_quality.get)
-            best_score = admin_quality[best_level]
-
-            if best_score >= 3:
-                recommendations.append(f"→ USE {best_level.upper()} LEVEL")
-                recommendations.append(f"  Reason: Good model fit, reliable results")
-            elif best_score >= 2:
-                recommendations.append(f"→ USE {best_level.upper()} LEVEL WITH CAUTION")
-                recommendations.append(f"  Reason: Acceptable fit, but verify hotspots manually")
-            else:
-                # All levels poor - recommend higher aggregation
-                if best_level == 'Community':
-                    recommendations.append(f"→ COMMUNITY LEVEL FAILED - TRY DISTRICT LEVEL")
-                    recommendations.append(f"  Reason: Insufficient data at community level")
-                elif best_level == 'District':
-                    recommendations.append(f"→ DISTRICT LEVEL FAILED - TRY OBLAST LEVEL")
-                    recommendations.append(f"  Reason: Insufficient data at district level")
-                else:
-                    recommendations.append(f"→ ALL LEVELS SHOW POOR FIT")
-                    recommendations.append(f"  Reason: Consider extending analysis period or checking data quality")
-
-            # Specific recommendations for failed levels
-            for level in admin_order:
-                if level in admin_quality and admin_quality[level] < 2:
-                    if level == 'Community' and 'District' in admin_quality:
-                        recommendations.append(f"  [WARN]  Community level unreliable → Use District level instead")
-                    elif level == 'District' and 'Oblast' in admin_quality:
-                        recommendations.append(f"  [WARN]  District level unreliable → Use Oblast level instead")
-
-        recommendations.append("")
-
-    # === H3 HEXAGONS RECOMMENDATIONS ===
-    if hex_diagnostics:
-        recommendations.append("=" * 80)
-        recommendations.append("H3 HEXAGONS - RESOLUTION RECOMMENDATIONS")
-        recommendations.append("=" * 80)
-        recommendations.append("")
-
-        hex_order = ['Hex_Res3']
-        hex_quality = {}
-
-        for level in hex_order:
-            if level in hex_diagnostics:
-                diag = hex_diagnostics[level]
-                converged = diag['converged']
-                r2 = diag['r2']
-                normal = diag['normal']
-                model = diag['model']
-
-                recommendations.append("-" * 60)
-                recommendations.append(f"Level: {level}")
-                recommendations.append("-" * 60)
-                recommendations.append(f"  Model Used: {model}")
-                recommendations.append(f"  Converged: {converged}")
-                if r2:
-                    recommendations.append(f"  Pseudo R²: {r2:.4f}")
-                recommendations.append(f"  Residuals Normal: {normal}")
-
-                # Quality score
-                quality_score = 0
-                if converged:
-                    quality_score += 1
-                if r2 and r2 > 0.05:
-                    quality_score += 2
-                if normal == 'Yes':
-                    quality_score += 1
-
-                hex_quality[level] = quality_score
-
-                if quality_score >= 3:
-                    recommendations.append(f"  [OK] Quality: GOOD")
-                elif quality_score >= 2:
-                    recommendations.append(f"  [WARN]  Quality: ACCEPTABLE")
-                else:
-                    recommendations.append(f"  [FAIL] Quality: POOR")
-                recommendations.append("")
-
-        # Overall recommendation for hex resolutions
-        recommendations.append("=" * 60)
-        recommendations.append("RECOMMENDED H3 RESOLUTION FOR DECISION-MAKING:")
-        recommendations.append("=" * 60)
-
-        if hex_quality:
-            best_level = max(hex_quality, key=hex_quality.get)
-            best_score = hex_quality[best_level]
-
-            if best_score >= 3:
-                recommendations.append(f"→ USE {best_level.upper()}")
-                recommendations.append(f"  Reason: Good model fit, reliable spatial clustering")
-            elif best_score >= 2:
-                recommendations.append(f"→ USE {best_level.upper()} WITH CAUTION")
-                recommendations.append(f"  Reason: Acceptable fit, but verify clusters manually")
-            else:
-                # Poor fit at res3 - suggest administrative units instead
-                recommendations.append(f"→ POOR FIT AT RES3")
-                recommendations.append(f"  Reason: Consider using administrative units instead")
-
+    if n_levels == 0:
+        recommendations.append("No diagnostics files found.")
         recommendations.append("")
 
     recommendations.append("=" * 80)

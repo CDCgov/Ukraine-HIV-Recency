@@ -263,14 +263,14 @@ EXCELLENT MODEL:
 
 ACCEPTABLE MODEL:
 - R-hat < 1.05 for all parameters
-- ESS > 100 for all parameters
+- ESS > 400 for all parameters
 - <1% divergences
 - PPC p-value between 0.01 and 0.99
 - Trace plots converged but may have some autocorrelation
 
 PROBLEMATIC MODEL (DO NOT USE):
 - R-hat > 1.05 for any parameter
-- ESS < 100 for any parameter
+- ESS < 400 for any parameter
 - >5% divergences
 - PPC p-value < 0.01 or > 0.99
 - Trace plots show non-convergence

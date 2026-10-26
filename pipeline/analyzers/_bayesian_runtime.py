@@ -35,7 +35,8 @@ def prepare_bayesian_inputs(cfg: Dict[str, Any],
                             level_name: str,
                             national_rate: float,
                             national_se: float,
-                            parametrization: str) -> Optional[Dict[str, Any]]:
+                            parametrization: str,
+                            compute_sigma: bool = True) -> Optional[Dict[str, Any]]:
     """Validate inputs, run the data-quality pre-check, auto-pick
     parametrization, and compute the adaptive ``sigma_hyperprior``.
 
@@ -98,15 +99,19 @@ def prepare_bayesian_inputs(cfg: Dict[str, Any],
     # predictor stays defined for brand-new sites with no baseline data.
     hist_prop = np.where(np.isnan(hist_prop), national_rate, hist_prop)
 
-    sigma_hyperprior, prior_strength, aggregation_level = compute_sigma_hyperprior(
-        cfg, y, n, n_territories, level_name, national_se, national_rate,
-    )
-
-    national_events = int(y.sum())
-    logger.info(
-        f"Adaptive prior: sigma={sigma_hyperprior:.2f} ({prior_strength}) based on "
-        f"{national_events} national events, {n_territories} territories, {aggregation_level} level"
-    )
+    # The adaptive sigma only feeds the single-window model's priors; the
+    # two-period detector uses fixed weakly-informative priors, so it skips
+    # this step (and its log lines) rather than report a prior it never uses.
+    sigma_hyperprior = None
+    if compute_sigma:
+        sigma_hyperprior, prior_strength, aggregation_level = compute_sigma_hyperprior(
+            cfg, y, n, n_territories, level_name, national_se, national_rate,
+        )
+        national_events = int(y.sum())
+        logger.info(
+            f"Adaptive prior: sigma={sigma_hyperprior:.2f} ({prior_strength}) based on "
+            f"{national_events} national events, {n_territories} territories, {aggregation_level} level"
+        )
 
     logger.info("Likelihood: Beta-Binomial (Binomial recovered as kappa -> infinity)")
 

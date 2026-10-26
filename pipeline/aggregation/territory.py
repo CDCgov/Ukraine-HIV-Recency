@@ -168,7 +168,7 @@ def aggregate_stats(cfg, testing_sites_df, gdf_admin: gpd.GeoDataFrame, gdf_case
 
                 gdf_admin['site_present'] = gdf_admin.index.isin(hex_with_active_sites)
                 logger.info(f"{len(df_active_sites)} sites active during {start.date()}-{end.date()}")
-                logger.info(f"  → {gdf_admin['site_present'].sum()} hexagons with active sites")
+                logger.info(f"  → {gdf_admin['site_present'].sum()} territories with active sites")
             else:
                 gdf_admin['site_present'] = gdf_admin['all_tested_curr'] > 0
                 logger.warning("No sites active during current period — falling back to test counts")

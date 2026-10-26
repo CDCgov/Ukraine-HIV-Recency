@@ -40,10 +40,10 @@ class DiagnosticInterpreter:
         interpretation.append("")
 
         if diagnostics.get('ess_adequate') == 'Yes':
-            interpretation.append("[OK] EFFECTIVE SAMPLE SIZE: All ESS > 100")
+            interpretation.append("[OK] EFFECTIVE SAMPLE SIZE: All ESS > 400")
             interpretation.append("   → Sufficient independent samples for inference")
         else:
-            interpretation.append("[FAIL] EFFECTIVE SAMPLE SIZE: Some ESS ≤ 100")
+            interpretation.append("[FAIL] EFFECTIVE SAMPLE SIZE: Some ESS ≤ 400")
             interpretation.append("   → High autocorrelation in chains")
             interpretation.append("   → SOLUTION: Increase draws or improve parametrization")
 

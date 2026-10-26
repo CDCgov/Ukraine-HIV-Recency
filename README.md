@@ -312,7 +312,8 @@ cut-off) yields seven labels:
 | 🟠 **Emerging hotspot** | Rising vs its own history, not yet above national — early signal. |
 | 🟡 **Stable high-burden** | Above national but not rising — chronic level. |
 | 🔵 **Declining from high-burden** | Falling from a high level. |
-| 🟢 **Emerging decrease** / **Significant decrease** | Downward trends. |
+| 🟢 **Emerging decrease** | Falling versus the territory's own history while the level is near national. |
+| 🟢 **Below national** | Current level credibly below the national reference (with or without a falling trend). |
 | ⚪ **Normal** | No signal on either axis. |
 
 New hexagons (no historical data) are marked with a `○` symbol on the map

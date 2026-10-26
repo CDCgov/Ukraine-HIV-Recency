@@ -22,6 +22,7 @@ from __future__ import annotations
 import gc
 import logging
 import traceback
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -320,6 +321,7 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
         """
         prep = prepare_bayesian_inputs(
             self.cfg, gdf_admin, level_name, national_rate, national_se, parametrization,
+            compute_sigma=False,
         )
         if prep is None:
             return gdf_admin, None
@@ -327,7 +329,6 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
         y = prep['y']
         n = prep['n']
         parametrization = prep['parametrization']
-        sigma_hyperprior = prep['sigma_hyperprior']
 
         y_h = np.nan_to_num(df['recent_count_hist'].to_numpy(), nan=0.0).astype(int)
         n_h = np.nan_to_num(df['all_tested_hist'].to_numpy(), nan=0.0).astype(int)
@@ -540,7 +541,12 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
                     gdf_admin.loc[gdf_admin['all_tested_curr'] > 0].index.map(df['sir_informative'])
 
             logger.info("Generating posterior predictive samples...")
-            with saved_model:
+            # PyMC warns that Potentials are ignored here. That only matters for
+            # prior-predictive draws: the posterior samples already carry the
+            # history-window Potential, and only the current window is
+            # replicated, so the warning is silenced for this call alone.
+            with saved_model, warnings.catch_warnings():
+                warnings.filterwarnings('ignore', message='The effect of Potentials')
                 ppc = pm.sample_posterior_predictive(
                     trace, progressbar=False, random_seed=self.cfg.get('random_seed', 42))
             diagnostics = self._calculate_diagnostics(

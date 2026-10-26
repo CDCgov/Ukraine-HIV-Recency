@@ -359,16 +359,15 @@ class BaseHotspotAnalyzer:
         two fits compute it at slightly different points; it is independent
         of everything here.
         """
-        # FDR threshold on the single-axis exceedance. The SMR/SIR taxonomy
-        # drives classification now (audit M4); this stays only as an
-        # informative log of the discovery budget on the "above national" axis.
+        # FDR threshold on the single-axis exceedance. Classification uses the
+        # per-axis cut-offs at the configured confidence level below; this
+        # 0.95-anchored figure is kept for the single-axis label only, so it is
+        # logged at debug level rather than next to the real decision rule.
         exc_arr = df['exceedance_prob'].dropna().values
         auto_threshold, bayesian_fdr = self._auto_threshold(exc_arr)
         n_above = int((exc_arr > auto_threshold).sum())
-        _moved = ("raised from 0.95" if auto_threshold > 0.95
-                  else "relaxed from 0.95" if auto_threshold < 0.95 else "unchanged")
-        logger.info(f"Bayesian FDR threshold: {auto_threshold:.3f} ({_moved}), "
-                    f"FDR={bayesian_fdr:.1%}, {n_above} territories above threshold")
+        logger.debug(f"Single-axis FDR threshold: {auto_threshold:.3f}, "
+                     f"FDR={bayesian_fdr:.1%}, {n_above} territories above threshold")
 
         # Each axis gets its own FDR-controlled cut-off so a call is made only
         # when the posterior evidence is strong on that specific dimension. The

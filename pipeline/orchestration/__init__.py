@@ -3,8 +3,6 @@
 from pipeline.orchestration.diagnostics_check import check_diagnostics
 from pipeline.orchestration.dashboard_collect import collect_dashboard_data
 from pipeline.orchestration.current_results import collect_current_results
-from pipeline.orchestration.model_comparison import generate_model_comparison
-from pipeline.orchestration.model_comparison_entry import build_model_comparison_entry
 from pipeline.orchestration.config_paths import resolve_paths
 from pipeline.orchestration.config_validation import validate_config
 from pipeline.orchestration.recommendations import generate_recommendations
@@ -31,8 +29,6 @@ __all__ = [
     "check_diagnostics",
     "collect_dashboard_data",
     "collect_current_results",
-    "generate_model_comparison",
-    "build_model_comparison_entry",
     "resolve_paths",
     "validate_config",
     "generate_recommendations",
