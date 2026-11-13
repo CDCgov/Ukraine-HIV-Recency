@@ -27,9 +27,9 @@ replaces the blend with:
 
   The 80 / 60 HIGH/MODERATE cut-offs were checked by a calibration study
   (``validation/reliability_calibration.py``, audit M5): the score rises
-  monotonically with sample size and HIGH estimates are decisive about the
-  SMR > 2 hotspot threshold far more often than LOW ones (~0.60 vs ~0.10),
-  so the ordering is sound and the cut-offs are kept. At the project's
+  monotonically with sample size and the 95% interval is decisive about the
+  parity threshold (SMR = 1) in ~1.00 of HIGH, ~0.61 of MODERATE and ~0.03
+  of LOW estimates, so the ordering is sound and the cut-offs are kept. At the project's
   national rate (~2%) the recency counts are tiny, so reaching HIGH
   effectively needs hundreds of tests per territory; most territories are
   intrinsically LOW reliability -- a property of the data, not the cut-offs.

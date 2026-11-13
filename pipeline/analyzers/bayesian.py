@@ -490,9 +490,10 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
             p_samples_list = [p_curr_samples[:, i] for i in range(n_terr)]
             _smr_sir = BaseHotspotAnalyzer._compute_smr_sir(
                 p_samples_list, df, national_rate,
-                smr_threshold=float(_dt.get('smr_threshold', 2.0)),
-                sir_threshold=float(_dt.get('sir_threshold', 1.5)),
-                smr_low_threshold=float(_dt.get('smr_low_threshold', 0.5)),
+                smr_threshold=float(_dt.get('smr_threshold', 1.0)),
+                sir_threshold=float(_dt.get('sir_threshold', 1.0)),
+                smr_low_threshold=float(_dt.get('smr_low_threshold', 1.0)),
+                sir_low_threshold=float(_dt.get('sir_low_threshold', 1.0)),
                 leave_one_out=bool((self.cfg or {}).get('smr_leave_one_out', False)),
             )
             for _k in ('national_rate_curr', 'baseline_rate_eb', 'smr_mean', 'smr_median',
@@ -505,7 +506,7 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
             # multiplicative current-vs-history change. Territories without a
             # baseline keep delta ~ mu_delta (pooled), and the taxonomy's
             # sir_informative gate withholds a trend claim there.
-            sir_threshold = float(_dt.get('sir_threshold', 1.5))
+            sir_threshold = float(_dt.get('sir_threshold', 1.0))
             ratio = np.exp(delta_samples)
             df['sir_mean'] = ratio.mean(axis=0)
             df['sir_lower'] = np.percentile(ratio, 2.5, axis=0)

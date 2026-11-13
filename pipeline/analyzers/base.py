@@ -282,10 +282,10 @@ class BaseHotspotAnalyzer:
     @staticmethod
     def _compute_smr_sir(p_samples, df: pd.DataFrame,
                          national_rate_baseline: float,
-                         smr_threshold: float = 2.0,
-                         sir_threshold: float = 1.5,
-                         smr_low_threshold: float = 0.5,
-                         sir_low_threshold: float = 1.0 / 1.5,
+                         smr_threshold: float = 1.0,
+                         sir_threshold: float = 1.0,
+                         smr_low_threshold: float = 1.0,
+                         sir_low_threshold: float = 1.0,
                          national_rate_curr_floor: float = 1e-3,
                          leave_one_out: bool = False):
         """Thin wrapper around :func:`pipeline.standardization.smr_sir.compute_smr_sir`."""

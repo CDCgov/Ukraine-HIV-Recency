@@ -255,8 +255,10 @@ def extract_posterior_summaries(cfg: Dict[str, Any],
     _dt = (cfg or {}).get('detection', {})
     _smr_sir = compute_smr_sir_fn(
         p_samples, df, national_rate,
-        smr_threshold=float(_dt.get('smr_threshold', 2.0)),
-        sir_threshold=float(_dt.get('sir_threshold', 1.5)),
+        smr_threshold=float(_dt.get('smr_threshold', 1.0)),
+        sir_threshold=float(_dt.get('sir_threshold', 1.0)),
+        smr_low_threshold=float(_dt.get('smr_low_threshold', 1.0)),
+        sir_low_threshold=float(_dt.get('sir_low_threshold', 1.0)),
         leave_one_out=bool((cfg or {}).get('smr_leave_one_out', False)),
     )
     df['national_rate_curr'] = _smr_sir['national_rate_curr']

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Simulation study for the HIV recent-infection hotspot detector.
+Simulation study for the HIV recent-infection hotspot detector (level axis).
 
 Purpose
 -------
@@ -13,32 +13,48 @@ different national recency levels).
 
 What is being validated
 ------------------------
-The pipeline flags a territory as a hotspot when the posterior probability that
-its standardized recency ratio exceeds an epidemiological threshold (here the
-Standardized Morbidity-style Ratio SMR > 2.0, i.e. twice the current national
-recency proportion) is itself above an automatically chosen cutoff. That cutoff
-is selected to control the Bayesian false discovery rate (FDR) among the flagged
-territories. This script reproduces that rule and checks whether the realised
-FDR matches the nominal target and how much true signal is recovered.
+The production rule for the LEVEL axis ("elevated vs national"): a territory is
+elevated when the posterior probability that its recency proportion exceeds
+the leave-one-out national proportion times ``detection.smr_threshold``
+(parity, 1.0) is above a cutoff. The cutoff is the pipeline's own
+``bayesian_fdr_threshold`` called exactly as ``_finalize_classification`` calls
+it: ``start = floor = detection.confidence_level`` (0.80, the Richardson et al.
+2004 D(0.8, 1) rule), raised only when a stricter cutoff brings the Bayesian
+FDR within 5%. A hotspot must also pass the presence gate
+(``MIN_HOTSPOT_CURRENT_EVENTS`` recent events in the window). Thresholds are
+read from ``config.json`` and the gate from ``taxonomy.py``, so the simulated
+and production rules cannot drift apart.
+
+The trend axis and the joint two-period model are validated separately
+(``two_period_validation.py``, ``threshold_simulation.py``); the full label
+taxonomy by ``taxonomy_validation.py``.
 
 Why it is self-contained
 ------------------------
 The per-territory recency probability is summarised in closed form using the
-Beta-Binomial conjugacy: a Beta prior combined with Binomial recent/ tested
-counts yields a Beta posterior. Exceedance probabilities are then exact Beta
-tail areas, so thousands of replicates run in seconds without MCMC. The
-detection logic imports the pipeline's own FDR-controlled exceedance
-threshold (``pipeline.standardization.bayesian_fdr_threshold``), so the
-simulated and production rules are guaranteed identical.
+Beta-Binomial conjugacy: a Beta prior centred on the national proportion
+combined with Binomial recent/tested counts yields a Beta posterior.
+Exceedance probabilities are exact Beta tail areas, so thousands of replicates
+run in seconds without MCMC. The fixed Beta prior is a stand-in for the
+production hierarchical prior and is deliberately conservative: when there is
+no real between-territory variation the hierarchical model learns that and
+shrinks every territory to the national rate, whereas a fixed prior cannot, so
+this script OVERSTATES false positives (about 5-7% of null territories flagged
+per window here, against about 1% for the full two-period model in
+``threshold_simulation.py``; a stronger prior narrows the gap only partly).
+Read its numbers as an upper bound on false calls and as the shape of the
+sensitivity/sample-size trade-off; the operating characteristics of the
+production model come from ``threshold_simulation.py``.
 
 Note on the measured quantity: like the pipeline, this validates the *proportion
 of recent infections among the newly diagnosed*, not incidence.
 
 Run:
-    python simulation_validation.py
+    python validation/simulation_validation.py
 """
 from __future__ import annotations
 
+import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,13 +64,15 @@ import numpy as np
 from scipy.stats import beta as beta_dist
 
 # Project root on sys.path so this script runs from the validation/ subfolder.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
-# Use the *production* FDR-controlled cutoff rule rather than a private copy,
-# so the simulated detector and the pipeline cannot drift apart. The function
-# tightens the exceedance cutoff upward from 0.95 while the Bayesian FDR stays
-# within target, then relaxes to a 0.70 floor; see its docstring.
-from pipeline.standardization import bayesian_fdr_threshold
+from pipeline.classification.taxonomy import MIN_HOTSPOT_CURRENT_EVENTS  # noqa: E402
+from pipeline.standardization import bayesian_fdr_threshold  # noqa: E402
+
+_DETECTION = json.loads((ROOT / 'config.json').read_text(encoding='utf-8'))['detection']
+SMR_THRESHOLD = float(_DETECTION['smr_threshold'])
+CONFIDENCE = float(_DETECTION['confidence_level'])
 
 
 # ----------------------------------------------------------------------------
@@ -68,7 +86,6 @@ class Scenario:
     avg_tests: int              # mean number of tests per territory
     hotspot_multiplier: float   # true recency = national * this, for hotspots
     frac_hotspots: float        # fraction of territories that are true hotspots
-    smr_threshold: float = 2.0  # SMR cutoff defining an epidemiological hotspot
 
 
 def _beta_prior(national_prop: float, prior_strength: float = 20.0) -> Tuple[float, float]:
@@ -84,25 +101,29 @@ def _beta_prior(national_prop: float, prior_strength: float = 20.0) -> Tuple[flo
     return a0, b0
 
 
-def simulate_window(scn: Scenario, rng: np.random.Generator) -> Tuple[float, float, float, int]:
+def simulate_window(scn: Scenario, rng: np.random.Generator) -> Tuple[float, float, float, int, bool]:
     """
-    Simulate one analysis window and apply the detection rule.
+    Simulate one analysis window and apply the production level-axis rule.
 
     Steps:
       1. Assign a true recency proportion to each territory: hotspots sit at
          national * hotspot_multiplier, the rest at the national proportion.
       2. Draw the number of tests per territory (Poisson around avg_tests) and
          the observed recent count ~ Binomial(tests, true_prop).
-      3. Form the Beta posterior for each territory and compute the exceedance
-         probability P(p_i > smr_threshold * national_prop) -- the posterior
-         probability that the SMR exceeds the epidemiological threshold.
-      4. Pick the FDR-controlled cutoff and flag territories above it.
-      5. Compare flags with the known hotspot labels.
+      3. Form the Beta posterior for each territory and the leave-one-out
+         national proportion from the other territories' observed counts.
+      4. Exceedance probability P(p_i > SMR_THRESHOLD * national_loo_i).
+      5. Cutoff from ``bayesian_fdr_threshold(start=floor=CONFIDENCE)``; flag
+         territories above it that also pass the presence gate.
+      6. Compare flags with the known hotspot labels.
 
-    Returns (sensitivity, specificity, empirical_fdr, n_flagged).
+    Returns (sensitivity, specificity, empirical_fdr, n_flagged, fdr_met),
+    where fdr_met says whether a cutoff meeting the 5% FDR target was found.
     """
     n = scn.n_territories
-    n_hot = max(1, int(round(scn.frac_hotspots * n)))
+    n_hot = int(round(scn.frac_hotspots * n))
+    if scn.frac_hotspots > 0:
+        n_hot = max(1, n_hot)
     is_hotspot = np.zeros(n, dtype=bool)
     is_hotspot[:n_hot] = True
     rng.shuffle(is_hotspot)
@@ -120,14 +141,14 @@ def simulate_window(scn: Scenario, rng: np.random.Generator) -> Tuple[float, flo
     post_a = a0 + recent
     post_b = b0 + (tests - recent)
 
-    # Exceedance probability that the SMR exceeds the threshold, i.e. that the
-    # true recency proportion exceeds smr_threshold * national. 1 - CDF is the
-    # upper tail of the Beta posterior.
-    ref = min(scn.smr_threshold * scn.national_prop, 0.999)
+    # Leave-one-out national proportion, floored as in compute_smr_sir.
+    loo = (recent.sum() - recent) / np.maximum(tests.sum() - tests, 1)
+    ref = np.minimum(np.maximum(loo, 1e-3) * SMR_THRESHOLD, 0.999)
     exc = 1.0 - beta_dist.cdf(ref, post_a, post_b)
 
-    cutoff, _ = bayesian_fdr_threshold(exc)
-    flagged = exc > cutoff
+    cutoff, achieved = bayesian_fdr_threshold(exc, start=CONFIDENCE, floor=CONFIDENCE)
+    fdr_met = achieved > 0 or not (exc > cutoff).any()
+    flagged = (exc > cutoff) & (recent >= MIN_HOTSPOT_CURRENT_EVENTS)
 
     tp = int(np.sum(flagged & is_hotspot))
     fp = int(np.sum(flagged & ~is_hotspot))
@@ -137,25 +158,27 @@ def simulate_window(scn: Scenario, rng: np.random.Generator) -> Tuple[float, flo
     sensitivity = tp / (tp + fn) if (tp + fn) else np.nan
     specificity = tn / (tn + fp) if (tn + fp) else np.nan
     emp_fdr = fp / (tp + fp) if (tp + fp) else 0.0
-    return sensitivity, specificity, emp_fdr, tp + fp
+    return sensitivity, specificity, emp_fdr, tp + fp, fdr_met
 
 
 def run_scenario(scn: Scenario, n_reps: int, seed: int) -> dict:
     """Average the operating characteristics over many simulated windows."""
     rng = np.random.default_rng(seed)
-    sens, spec, fdr, flagged = [], [], [], []
+    sens, spec, fdr, flagged, met = [], [], [], [], []
     for _ in range(n_reps):
-        s, sp, f, nf = simulate_window(scn, rng)
+        s, sp, f, nf, m = simulate_window(scn, rng)
         sens.append(s)
         spec.append(sp)
         fdr.append(f)
         flagged.append(nf)
+        met.append(m)
     return {
         'scenario': scn.name,
-        'sensitivity': np.nanmean(sens),
+        'sensitivity': np.nanmean(sens) if not np.all(np.isnan(sens)) else np.nan,
         'specificity': np.nanmean(spec),
         'empirical_fdr': np.mean(fdr),
         'mean_flagged': np.mean(flagged),
+        'fdr_met': np.mean(met),
     }
 
 
@@ -165,8 +188,13 @@ def main():
 
     # Scenarios span the regimes seen in the real data: low vs higher national
     # recency, sparse vs well-sampled territories, and moderate vs strong true
-    # elevation. frac_hotspots is kept small, as real hotspots are rare.
+    # elevation. frac_hotspots is kept small, as real hotspots are rare. The
+    # "real-data-like" row mirrors an H3 res3 window: ~27 active cells, ~65
+    # tests per cell, national recency ~1.3%, one strongly elevated cell.
     scenarios = [
+        Scenario("real-data-like (27 cells, 1 hotspot x4)",
+                 n_territories=27, national_prop=0.013, avg_tests=65,
+                 hotspot_multiplier=4.0, frac_hotspots=1 / 27),
         Scenario("low national, sparse tests, strong effect",
                  n_territories=35, national_prop=0.01, avg_tests=25,
                  hotspot_multiplier=4.0, frac_hotspots=0.1),
@@ -186,22 +214,28 @@ def main():
 
     results = [run_scenario(s, n_reps, seed) for s in scenarios]
 
-    print("=" * 100)
-    print(f"Hotspot detector simulation  |  {n_reps} replicates per scenario  "
-          f"|  SMR threshold = 2.0  |  nominal FDR = 0.05")
-    print("=" * 100)
-    header = f"{'scenario':<46}{'sensitivity':>13}{'specificity':>13}{'emp.FDR':>10}{'flagged':>10}"
+    print("=" * 108)
+    print(f"Hotspot detector simulation (level axis)  |  {n_reps} replicates per scenario  "
+          f"|  SMR threshold = {SMR_THRESHOLD:g} (LOO)  |  confidence = {CONFIDENCE:.2f}  "
+          f"|  presence gate >= {MIN_HOTSPOT_CURRENT_EVENTS}")
+    print("=" * 108)
+    header = (f"{'scenario':<46}{'sensitivity':>13}{'specificity':>13}{'emp.FDR':>10}"
+              f"{'flagged':>10}{'FDR<=5% met':>14}")
     print(header)
-    print("-" * 100)
+    print("-" * 108)
     for r in results:
         print(f"{r['scenario']:<46}{r['sensitivity']:>13.3f}{r['specificity']:>13.3f}"
-              f"{r['empirical_fdr']:>10.3f}{r['mean_flagged']:>10.2f}")
-    print("-" * 100)
+              f"{r['empirical_fdr']:>10.3f}{r['mean_flagged']:>10.2f}{r['fdr_met']:>14.2f}")
+    print("-" * 108)
     print("Reading the table:")
-    print("  - empirical FDR should sit at or below the 0.05 nominal target;")
+    print("  - 'FDR<=5% met' is the share of windows where a cutoff >= the confidence level")
+    print("    achieved the 5% Bayesian FDR target; otherwise the rule falls back to the")
+    print("    plain confidence-level cutoff and the realised FDR can exceed 5%;")
     print("  - sensitivity falls when tests are sparse or the effect is small")
     print("    (small numerators give wide posteriors and few confident calls);")
-    print("  - in the null scenario almost nothing should be flagged.")
+    print("  - in the null scenario few territories should be flagged; the fixed prior")
+    print("    used here overstates false positives relative to the hierarchical model")
+    print("    (see the module docstring and threshold_simulation.py).")
 
 
 if __name__ == '__main__':
