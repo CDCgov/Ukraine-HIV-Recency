@@ -35,6 +35,14 @@ getting-started guide** — where the test data lives, how to generate the input
 how to run the pipeline, and where the outputs land — plus the provenance chain
 and an honest privacy statement.
 
+### Browser notebooks
+
+[`jupyterlite/`](jupyterlite/README.md) builds a website of notebooks that explain
+the method on the synthetic data and run **entirely in the browser** (JupyterLite):
+the detector step by step, results maps, the eight-grid sensitivity check, an
+interactive JupyterGIS map and a live fit of the Bayesian model. The same notebooks
+are also built as a Jupyter Book.
+
 ---
 
 ## What it does

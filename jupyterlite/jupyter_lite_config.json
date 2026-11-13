@@ -1,0 +1,7 @@
+{
+  "LiteBuildConfig": {
+    "contents": ["content"],
+    "output_dir": "_output",
+    "extra_ignore_contents": ["_build", "myst[.]yml", "__pycache__", "[.]ipynb_checkpoints"]
+  }
+}

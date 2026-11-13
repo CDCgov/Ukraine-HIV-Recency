@@ -1,0 +1,7 @@
+# Build the JupyterLite site and the Jupyter Book (no PyMC needed: the results
+# the notebooks read are precomputed by build_content.py and committed).
+jupyterlite-core==0.8.7
+jupyterlite-pyodide-kernel==0.8.7
+jupytergis-lite==0.18.1
+jupyterlab==4.6.6
+jupyter-book==2.1.7
