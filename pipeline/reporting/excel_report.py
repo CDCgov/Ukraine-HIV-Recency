@@ -70,8 +70,9 @@ REPORT_GLOSSARY = [
      'wrongly implies a population-standardised mortality/incidence ratio.'),
     ('Historical trend ratio',
      'Ratio of a territory\'s current recent-infection proportion to its OWN '
-     'empirical-Bayes-shrunk history, adjusted for the national trend. >1 means '
-     'rising versus its own past. Replaces the label "SIR".'),
+     'history, net of the national change between the two windows (joint '
+     'two-period model). >1 means rising versus its own past by more than the '
+     'country as a whole. Replaces the label "SIR".'),
     ('Historical trend informative',
      'True only when the territory has enough historical tests for the trend ratio '
      'to reflect its own history rather than the national rate. When False, no '
