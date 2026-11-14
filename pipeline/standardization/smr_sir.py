@@ -83,10 +83,10 @@ def eb_baseline_rate(recent_hist: Iterable[float],
 def compute_smr_sir(p_samples,
                     df: pd.DataFrame,
                     national_rate_baseline: float,
-                    smr_threshold: float = 2.0,
-                    sir_threshold: float = 1.5,
-                    smr_low_threshold: float = 0.5,
-                    sir_low_threshold: float = 1.0 / 1.5,
+                    smr_threshold: float = 1.0,
+                    sir_threshold: float = 1.0,
+                    smr_low_threshold: float = 1.0,
+                    sir_low_threshold: float = 1.0,
                     national_rate_curr_floor: float = 1e-3,
                     leave_one_out: bool = False,
                     ) -> Dict[str, Any]:
@@ -110,7 +110,8 @@ def compute_smr_sir(p_samples,
         national_rate_baseline: national recency proportion over the
             baseline period (denominator of the SIR trend factor).
         smr_threshold / sir_threshold: epidemiological cut-offs for the
-            upper tail of each metric.
+            upper tail of each metric (parity, 1.0, in production; read
+            from ``config.json`` ``detection``).
         smr_low_threshold / sir_low_threshold: cut-offs for the lower
             tail (used to detect decline categories).
         national_rate_curr_floor: minimum value used for the current

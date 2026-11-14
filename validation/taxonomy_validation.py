@@ -47,7 +47,7 @@ DESIGNS = [
     ('stable',      'Stable high-burden',                     250, 45, 250, 45, 0.40, 0.40),
     ('declining',   'Declining from high-burden',             250, 60, 250, 30, 0.40, 0.40),
     ('emerg_dec',   'Emerging decrease',                      250, 20, 250, 6,  0.30, 0.40),
-    ('sig_dec',     'Significant decrease',                   250, 8,  300, 1,  0.20, 0.30),
+    ('below_nat',   'Below national',                         250, 8,  300, 1,  0.20, 0.30),
     ('normal',      'Normal',                                 250, 6,  250, 7,  0.25, 0.25),
     ('elev_unc',    'Elevated vs national (trend uncertain)', 4,   0,  250, 40, 0.40, 0.25),
     ('nodata',      'No Data',                                250, 6,  0,   0,  0.25, 0.25),

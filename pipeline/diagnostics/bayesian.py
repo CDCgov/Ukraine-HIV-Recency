@@ -18,6 +18,7 @@ import numpy as np
 import pymc as pm
 
 from pipeline.classification import add_smr_sir_counts as _add_smr_sir_counts
+from pipeline.constants import ANALYSIS_CONSTANTS
 from pipeline.diagnostics.interpreter import DiagnosticInterpreter
 from pipeline.diagnostics.ppc import PPCCalculator
 
@@ -60,13 +61,14 @@ def calculate_bayesian_diagnostics(trace, df, level_name, national_rate, model=N
         diagnostics['rhat_mu_alpha'] = None
         diagnostics['rhat_sigma_alpha'] = None
 
-    # Check all available R-hats < 1.1 (a missing variable is simply skipped).
-    _rhat_vals = [diagnostics[k] for k in
-                  ('rhat_alpha_max', 'rhat_beta_max', 'rhat_mu_alpha', 'rhat_sigma_alpha')
-                  if diagnostics.get(k) is not None]
-    all_rhat_ok = all(v < 1.1 for v in _rhat_vals) if _rhat_vals else True
-
-    diagnostics['convergence_ok'] = 'Yes' if all_rhat_ok else 'No'
+    # Run-level convergence: the largest R-hat over EVERY posterior variable
+    # (per-territory effects and hyperparameters such as kappa, sigma_a,
+    # mu_hist / mu_curr, beta_intensity) must sit below 1.01 (Vehtari et al.
+    # 2021). ``rhat_max`` is the key the reliability gate and the reports read.
+    _rhat_thr = ANALYSIS_CONSTANTS['rhat_max']['value']
+    diagnostics['rhat_max_all'] = float(np.nanmax([float(rhat[v].max().values) for v in rhat.data_vars]))
+    diagnostics['rhat_max'] = diagnostics['rhat_max_all']
+    diagnostics['convergence_ok'] = 'Yes' if diagnostics['rhat_max_all'] < _rhat_thr else 'No'
 
     # Effective sample size
     ess = az.ess(trace)
@@ -80,8 +82,13 @@ def calculate_bayesian_diagnostics(trace, df, level_name, national_rate, model=N
     else:
         diagnostics['ess_mu_alpha'] = None
 
-    diagnostics['ess_adequate'] = ('Yes' if (diagnostics['ess_alpha_min'] is not None
-                                             and diagnostics['ess_alpha_min'] > 400) else 'No')
+    # Run-level ESS: the smallest bulk ESS over every posterior variable must
+    # exceed 400 (Vehtari et al. 2021). ``ess_min`` is the key the reliability
+    # gate and the reports read.
+    _ess_thr = ANALYSIS_CONSTANTS['ess_min_per_chain']['value']
+    diagnostics['ess_min_all'] = float(np.nanmin([float(ess[v].min().values) for v in ess.data_vars]))
+    diagnostics['ess_min'] = diagnostics['ess_min_all']
+    diagnostics['ess_adequate'] = 'Yes' if diagnostics['ess_min_all'] > _ess_thr else 'No'
 
     # Divergences (NEW)
     try:
@@ -156,8 +163,9 @@ def calculate_bayesian_diagnostics(trace, df, level_name, national_rate, model=N
         diagnostics['ppc_pvalue'] = ppc_pvalue
         diagnostics['ppc_ok'] = 'Yes' if ppc_ok else ('No' if ppc_ok is not None else 'Unknown')
         if ppc_details:
-            diagnostics['ppc_pvalue_chi2'] = ppc_details.get('p_value_chi2')
             diagnostics['ppc_pvalue_zeros'] = ppc_details.get('p_value_zeros')
+            diagnostics['ppc_pvalue_p95'] = ppc_details.get('p_value_p95')
+            diagnostics['ppc_pvalue_rate'] = ppc_details.get('p_value_rate')
     except (ValueError, KeyError, AttributeError) as e:
         logger.warning(f"Could not calculate PPC p-value: {e}")
         diagnostics['ppc_pvalue'] = None
@@ -165,7 +173,7 @@ def calculate_bayesian_diagnostics(trace, df, level_name, national_rate, model=N
 
     # LOO-IC (Leave-One-Out Information Criterion)
     try:
-        logger.info("Calculating LOO-IC for model comparison...")
+        logger.info("Calculating LOO-IC (predictive fit; Pareto-k flags influential territories)...")
         loo_result = az.loo(trace)
         diagnostics['loo_elpd'] = float(loo_result.elpd_loo)
         diagnostics['loo_se'] = float(loo_result.se)

@@ -37,7 +37,7 @@ def print_summary(gdf_admin: gpd.GeoDataFrame, level_name: str,
         summary.append("\nClassification distribution (SMR/SIR taxonomy):")
         for cat in ["Established hotspot", "Emerging hotspot", "Stable high-burden",
                     "Declining from high-burden", "Emerging decrease",
-                    "Significant decrease", "Elevated vs national (trend uncertain)",
+                    "Below national", "Elevated vs national (trend uncertain)",
                     "Normal", "No Data"]:
             count = (gdf_admin['classification'] == cat).sum()
             if count > 0:

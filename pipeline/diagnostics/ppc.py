@@ -35,9 +35,8 @@ class PPCCalculator:
         Run the three-statistic posterior predictive check.
 
         Args:
-            trace: ArviZ InferenceData with posterior ``p`` and ``kappa``
-                (both are produced by every analyzer migrated to the
-                always-Beta-Binomial likelihood).
+            trace: ArviZ InferenceData with the current-window rate
+                (``p``, or ``p_curr`` for the two-period model) and ``kappa``.
             y_obs: Observed recent counts per territory (1-D).
             n_obs: Tests per territory (1-D, same length as ``y_obs``).
             ppc: Kept for backward-compatible signature; unused.
@@ -52,11 +51,14 @@ class PPCCalculator:
         """
         try:
             post = trace.posterior
-            if 'p' not in post:
-                logger.info("PPC: posterior has no Deterministic 'p'; skipping checks.")
+            # The two-period detector names its current-window rate p_curr
+            # (the window y_obs is observed on); the single-window model uses p.
+            p_var = next((v for v in ('p', 'p_curr') if v in post), None)
+            if p_var is None:
+                logger.info("PPC: posterior has no current-window rate (p / p_curr); skipping checks.")
                 return None, None, {}
 
-            p_samples = post['p'].values  # (chains, draws, n_territories)
+            p_samples = post[p_var].values  # (chains, draws, n_territories)
             _, _, n_terr = p_samples.shape
             p_flat = p_samples.reshape(-1, n_terr)
             n_obs_i = np.asarray(n_obs, dtype=int)

@@ -57,7 +57,6 @@ from pipeline.history import HistoricalComparison
 from pipeline.orchestration import (
     analyze_specification as _orch_analyze_specification,
     assess_data_quality as _orch_assess_data_quality,
-    build_model_comparison_entry as _orch_build_model_comparison_entry,
     calibrate_min_tests as _orch_calibrate_min_tests,
     calibrate_sigma_multipliers as _orch_calibrate_sigma_multipliers,
     check_diagnostics as _orch_check_diagnostics,
@@ -69,7 +68,6 @@ from pipeline.orchestration import (
     generate_audit_trail_reports as _orch_generate_audit_trail_reports,
     generate_iterative_hotspots_report as _orch_generate_iterative_hotspots_report,
     generate_group_attribution_report as _orch_generate_group_attribution_report,
-    generate_model_comparison as _orch_generate_model_comparison,
     generate_recommendations as _orch_generate_recommendations,
     interpret_bayesian_diagnostics as _orch_interpret_bayesian_diagnostics,
     prepare_iterative_windows as _orch_prepare_iterative_windows,
@@ -167,7 +165,6 @@ class PipelineOrchestrator:
         self.results = {}
         self.period_str = None
         self.run_timestamp = run_timestamp  # Set from main() for consistent timestamping
-        self.model_comparison_data = []  # Store model comparison data
 
         # Decision Audit Trail - will be initialized per level
         self.audit_trails = {}  # Dictionary to store audit trail for each level
@@ -388,9 +385,6 @@ class PipelineOrchestrator:
                 report_kept_previous=False,
             )
 
-            # Store the detector's result for the run-level summary.
-            self._add_model_comparison(level_name, model_used, final_diag)
-
             # Store results for dashboard
             if final_gdf is not None and model_used is not None:
                 self.results[level_name] = {
@@ -423,8 +417,10 @@ class PipelineOrchestrator:
         the run finishes with the summary dashboard, historical comparison
         and audit-trail reports.
         """
-        # Set timestamp at the beginning of analysis
-        self.run_timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        # Keep the timestamp main() passed in -- it already names the session
+        # output folder -- so the logged run id matches that folder.
+        if self.run_timestamp is None:
+            self.run_timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
         logger.info(f"Starting analysis run: {self.run_timestamp}")
 
         # Derive the period tag from the analysis window when the interactive
@@ -450,9 +446,6 @@ class PipelineOrchestrator:
         levels = self.config.get('analysis_levels') or self.config.get('hex_resolutions', [3])
         self.run_for_mode('analysis', levels)
 
-        # Generate model comparison
-        self.generate_model_comparison()
-
         # Generate recommendations
         self.generate_recommendations()
 
@@ -475,12 +468,6 @@ class PipelineOrchestrator:
         """Thin wrapper around :func:`pipeline.orchestration.collect_current_results`."""
         return _orch_collect_current_results(self.results, self.period_str,
                                               PIPELINE_VERSION, _is_hotspot)
-
-    def _add_model_comparison(self, level_name: str, model_used: str, final_diag: dict):
-        """Thin wrapper around :func:`pipeline.orchestration.build_model_comparison_entry`."""
-        self.model_comparison_data.append(
-            _orch_build_model_comparison_entry(level_name, model_used, final_diag)
-        )
 
     def run_iterative_analysis(self):
         """
@@ -635,8 +622,7 @@ class PipelineOrchestrator:
                     'analysis_end': window['analysis_end'],
                     'pct_divergences': diagnostics.get('pct_divergences'),
                     'rhat_max': diagnostics.get('rhat_max'),
-                    'ess_min': diagnostics.get('ess_alpha_min',
-                                               diagnostics.get('min_ess_bulk')),
+                    'ess_min': diagnostics.get('ess_min'),
                     'reason': 'convergence_fatal',
                 })
 
@@ -686,29 +672,16 @@ class PipelineOrchestrator:
         self._optimal_min_tests = optimal_min
         return optimal_min
 
-    # _calibrate_reliability_weights was the calibration step for the
-    # legacy 40/30/30 reliability-weighting scheme. With the CV-based
-    # reliability (ReliabilityScoreCalculator.calculate_territory_scores)
-    # there are no weights to calibrate, so the function was removed.
-
-    def generate_model_comparison(self):
-        """Thin wrapper around :func:`pipeline.orchestration.generate_model_comparison`."""
-        comparison_path = self.get_output_path(
-            "summary", "All_Levels",
-            f'Model_Comparison_{self.period_str}.xlsx',
-            is_hex=False,
-        )
-        _orch_generate_model_comparison(self.model_comparison_data, comparison_path)
-
     def generate_recommendations(self):
         """Thin wrapper around :func:`pipeline.orchestration.generate_recommendations`."""
-        output_dir = Path(__file__).resolve().parent.parent / self.config['output_dir']
-        output_dir.mkdir(parents=True, exist_ok=True)
         rec_path = self.get_output_path(
             "summary", "Recommendations",
             f'RECOMMENDATIONS_{self.period_str}.txt',
             is_hex=False,
         )
+        # Read this run's reports: they live under the session folder
+        # (<run>/bayesian/...), the parent of the summary/ folder.
+        output_dir = rec_path.parent.parent
         _orch_generate_recommendations(self.config, output_dir, rec_path, _is_hotspot)
 
 # =============================================================================

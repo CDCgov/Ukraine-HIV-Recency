@@ -12,8 +12,8 @@ variation of its SMR posterior:
 Those cut-offs (80 / 60) were originally picked by hand. This script grounds
 them: it asks, across realistic regimes of sample size and true effect, how
 the score relates to an objective, decision-relevant quantity --- whether the
-95% credible interval is *decisive* about the SMR > 2 hotspot threshold (the
-interval lies entirely above or entirely below 2, so the territory can be
+95% credible interval is *decisive* about the parity threshold SMR = 1 (the
+interval lies entirely above or entirely below 1, so the territory can be
 acted on rather than being "inconclusive").
 
 It is closed-form (Beta-Binomial conjugacy, the same shrinkage the pipeline

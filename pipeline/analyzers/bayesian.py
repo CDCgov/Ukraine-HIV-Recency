@@ -22,6 +22,7 @@ from __future__ import annotations
 import gc
 import logging
 import traceback
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -320,6 +321,7 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
         """
         prep = prepare_bayesian_inputs(
             self.cfg, gdf_admin, level_name, national_rate, national_se, parametrization,
+            compute_sigma=False,
         )
         if prep is None:
             return gdf_admin, None
@@ -327,7 +329,6 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
         y = prep['y']
         n = prep['n']
         parametrization = prep['parametrization']
-        sigma_hyperprior = prep['sigma_hyperprior']
 
         y_h = np.nan_to_num(df['recent_count_hist'].to_numpy(), nan=0.0).astype(int)
         n_h = np.nan_to_num(df['all_tested_hist'].to_numpy(), nan=0.0).astype(int)
@@ -489,9 +490,10 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
             p_samples_list = [p_curr_samples[:, i] for i in range(n_terr)]
             _smr_sir = BaseHotspotAnalyzer._compute_smr_sir(
                 p_samples_list, df, national_rate,
-                smr_threshold=float(_dt.get('smr_threshold', 2.0)),
-                sir_threshold=float(_dt.get('sir_threshold', 1.5)),
-                smr_low_threshold=float(_dt.get('smr_low_threshold', 0.5)),
+                smr_threshold=float(_dt.get('smr_threshold', 1.0)),
+                sir_threshold=float(_dt.get('sir_threshold', 1.0)),
+                smr_low_threshold=float(_dt.get('smr_low_threshold', 1.0)),
+                sir_low_threshold=float(_dt.get('sir_low_threshold', 1.0)),
                 leave_one_out=bool((self.cfg or {}).get('smr_leave_one_out', False)),
             )
             for _k in ('national_rate_curr', 'baseline_rate_eb', 'smr_mean', 'smr_median',
@@ -504,7 +506,7 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
             # multiplicative current-vs-history change. Territories without a
             # baseline keep delta ~ mu_delta (pooled), and the taxonomy's
             # sir_informative gate withholds a trend claim there.
-            sir_threshold = float(_dt.get('sir_threshold', 1.5))
+            sir_threshold = float(_dt.get('sir_threshold', 1.0))
             ratio = np.exp(delta_samples)
             df['sir_mean'] = ratio.mean(axis=0)
             df['sir_lower'] = np.percentile(ratio, 2.5, axis=0)
@@ -540,7 +542,12 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
                     gdf_admin.loc[gdf_admin['all_tested_curr'] > 0].index.map(df['sir_informative'])
 
             logger.info("Generating posterior predictive samples...")
-            with saved_model:
+            # PyMC warns that Potentials are ignored here. That only matters for
+            # prior-predictive draws: the posterior samples already carry the
+            # history-window Potential, and only the current window is
+            # replicated, so the warning is silenced for this call alone.
+            with saved_model, warnings.catch_warnings():
+                warnings.filterwarnings('ignore', message='The effect of Potentials')
                 ppc = pm.sample_posterior_predictive(
                     trace, progressbar=False, random_seed=self.cfg.get('random_seed', 42))
             diagnostics = self._calculate_diagnostics(

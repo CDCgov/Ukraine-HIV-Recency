@@ -35,7 +35,8 @@ def prepare_bayesian_inputs(cfg: Dict[str, Any],
                             level_name: str,
                             national_rate: float,
                             national_se: float,
-                            parametrization: str) -> Optional[Dict[str, Any]]:
+                            parametrization: str,
+                            compute_sigma: bool = True) -> Optional[Dict[str, Any]]:
     """Validate inputs, run the data-quality pre-check, auto-pick
     parametrization, and compute the adaptive ``sigma_hyperprior``.
 
@@ -98,15 +99,19 @@ def prepare_bayesian_inputs(cfg: Dict[str, Any],
     # predictor stays defined for brand-new sites with no baseline data.
     hist_prop = np.where(np.isnan(hist_prop), national_rate, hist_prop)
 
-    sigma_hyperprior, prior_strength, aggregation_level = compute_sigma_hyperprior(
-        cfg, y, n, n_territories, level_name, national_se, national_rate,
-    )
-
-    national_events = int(y.sum())
-    logger.info(
-        f"Adaptive prior: sigma={sigma_hyperprior:.2f} ({prior_strength}) based on "
-        f"{national_events} national events, {n_territories} territories, {aggregation_level} level"
-    )
+    # The adaptive sigma only feeds the single-window model's priors; the
+    # two-period detector uses fixed weakly-informative priors, so it skips
+    # this step (and its log lines) rather than report a prior it never uses.
+    sigma_hyperprior = None
+    if compute_sigma:
+        sigma_hyperprior, prior_strength, aggregation_level = compute_sigma_hyperprior(
+            cfg, y, n, n_territories, level_name, national_se, national_rate,
+        )
+        national_events = int(y.sum())
+        logger.info(
+            f"Adaptive prior: sigma={sigma_hyperprior:.2f} ({prior_strength}) based on "
+            f"{national_events} national events, {n_territories} territories, {aggregation_level} level"
+        )
 
     logger.info("Likelihood: Beta-Binomial (Binomial recovered as kappa -> infinity)")
 
@@ -250,8 +255,10 @@ def extract_posterior_summaries(cfg: Dict[str, Any],
     _dt = (cfg or {}).get('detection', {})
     _smr_sir = compute_smr_sir_fn(
         p_samples, df, national_rate,
-        smr_threshold=float(_dt.get('smr_threshold', 2.0)),
-        sir_threshold=float(_dt.get('sir_threshold', 1.5)),
+        smr_threshold=float(_dt.get('smr_threshold', 1.0)),
+        sir_threshold=float(_dt.get('sir_threshold', 1.0)),
+        smr_low_threshold=float(_dt.get('smr_low_threshold', 1.0)),
+        sir_low_threshold=float(_dt.get('sir_low_threshold', 1.0)),
         leave_one_out=bool((cfg or {}).get('smr_leave_one_out', False)),
     )
     df['national_rate_curr'] = _smr_sir['national_rate_curr']

@@ -63,7 +63,7 @@ SMR_SIR_LABELS = (
     ('Stable high-burden',         'stable_high_burden'),
     ('Declining from high-burden', 'declining_from_high_burden'),
     ('Emerging decrease',          'emerging_decrease'),
-    ('Significant decrease',       'significant_decrease'),
+    ('Below national',             'below_national'),
     ('Elevated vs national (trend uncertain)', 'elevated_trend_uncertain'),
     ('Normal',                     'normal'),
 )
@@ -147,10 +147,10 @@ def classify_with_smr_sir(row: pd.Series,
         ('high', 'low'):  "Normal",   # rises but still below national
         ('norm', 'high'): "Stable high-burden",
         ('norm', 'norm'): "Normal",
-        ('norm', 'low'):  "Significant decrease",
+        ('norm', 'low'):  "Below national",
         ('low',  'high'): "Declining from high-burden",
         ('low',  'norm'): "Emerging decrease",
-        ('low',  'low'):  "Significant decrease",
+        ('low',  'low'):  "Below national",
     }
     label = label_map.get((sir_state, smr_state), "Normal")
 
