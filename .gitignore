@@ -81,3 +81,13 @@ validation/threshold_simulation_results.txt
 
 # Private draft correspondence (never publish to the public repo)
 jim_correspondence/
+
+# JupyterLite build products (sources live in jupyterlite/)
+jupyterlite/_runs/
+jupyterlite/_output/
+jupyterlite/content/_build/
+jupyterlite/.jupyterlite.doit.db
+# The browser site ships synthetic-only CSVs (built from data/synthetic_input_data.xlsx
+# by jupyterlite/build_content.py); un-ignore exactly those, nothing else.
+!jupyterlite/content/data/*.csv
+!jupyterlite/grids/grids_summary.csv

@@ -1,0 +1,9 @@
+grid,slug,resolution,n_cells,area_median_km2,area_min_km2,area_max_km2
+H3,h3,res3,82,12031,11102,13079
+S2,s2,L6,49,20866,18594,22898
+A5,a5,res6,111,8302,8302,8302
+rHEALPix,rhealpix,res4,79,12957,12957,12957
+HEALPix (xdggs),healpix_xdggs,level6,96,10410,10399,10419
+DGGRID ISEA4H,dggrid_isea4h,res6,76,12492,12479,12503
+DGGRID ISEA3H,dggrid_isea3h,res8,113,7799,7791,7805
+OpenEAGGR ISEA4T,openeaggr_isea4t,level6,146,6218,6210,6227

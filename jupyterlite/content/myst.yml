@@ -1,0 +1,17 @@
+version: 1
+project:
+  title: Ukraine HIV recency hotspots — method notebooks
+  description: How the hotspot pipeline works, shown on fully synthetic data.
+  github: https://github.com/CDCgov/Ukraine-HIV-Recency
+  license: Apache-2.0
+  toc:
+    - file: index.md
+    - file: 01_synthetic_data.ipynb
+    - file: 02_how_the_detector_works.ipynb
+    - file: 03_results_maps.ipynb
+    - file: 04_grid_sensitivity.ipynb
+    - file: 05_live_model.ipynb
+site:
+  template: book-theme
+  options:
+    folders: true
