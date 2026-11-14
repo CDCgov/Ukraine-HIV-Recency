@@ -25,8 +25,8 @@ For tractability the two-period model is fit once per scenario on one large
 simulated dataset (a single MCMC run), and the SIR baseline is computed on the
 SAME data in closed form via the pipeline's own ``compute_smr_sir`` /
 ``bayesian_fdr_threshold`` helpers, so the two rules cannot drift from
-production. The trend "truth" is whether a territory's current rate was raised
-above its history by at least the flagged multiplier.
+production. The trend "truth" is whether the simulation raised a territory's
+current rate above its history (trend_multiplier > 1).
 
 Run:
     python validation/two_period_validation.py
@@ -51,7 +51,11 @@ import pytensor.tensor as pt
 from pipeline.standardization import bayesian_fdr_threshold
 from pipeline.standardization.smr_sir import compute_smr_sir
 
-SIR_THRESHOLD = 1.5  # a "trend" is a >=1.5x current-vs-history rise
+# Parity, as in production (config.json -> detection.sir_threshold = 1.0): a
+# "trend" flag is posterior evidence that the current rate is above the
+# territory's own history at all, P(delta_i > 0). The simulated truth is a real
+# rise (trend_multiplier > 1) on the designated territories.
+SIR_THRESHOLD = 1.0
 LOG_SIR = float(np.log(SIR_THRESHOLD))
 
 
@@ -93,10 +97,12 @@ def simulate_two_period(scn: Scenario, rng: np.random.Generator) -> pd.DataFrame
 
 def fit_two_period_delta(df: pd.DataFrame, national_rate: float,
                          seed: int) -> np.ndarray:
-    """Fit the joint two-period model and return P(delta_i > log(1.5)) per territory.
+    """Fit the joint two-period model and return P(delta_i > log(SIR_THRESHOLD)).
 
-    This mirrors ``BayesianAnalyzer.run_two_period_model`` in compact form (a
-    lightweight sampler configuration for the simulation).
+    This mirrors ``BayesianAnalyzer.run_two_period_model`` in compact form (same
+    priors, lighter sampler). The testing-intensity term is omitted because the
+    simulation holds tests per month constant between windows, and production
+    switches the term off when test-months do not vary.
     """
     y = df['recent_count_curr'].to_numpy().astype(int)
     n = df['all_tested_curr'].to_numpy().astype(int)
@@ -110,18 +116,18 @@ def fit_two_period_delta(df: pd.DataFrame, national_rate: float,
         mu_hist = pm.Normal('mu_hist', mu=prior_mu, sigma=1.5)
         mu_curr = pm.Normal('mu_curr', mu=prior_mu, sigma=1.5)
         sigma_a = pm.HalfNormal('sigma_a', sigma=2)
-        mu_delta = pm.Normal('mu_delta', mu=0.0, sigma=1.0)
         sigma_delta = pm.HalfNormal('sigma_delta', sigma=1.0)
         a = pm.Deterministic('a', sigma_a * pm.Normal('a_off', 0, 1, shape=n_terr))
-        delta = pm.Deterministic('delta', mu_delta + sigma_delta * pm.Normal('d_off', 0, 1, shape=n_terr))
+        # delta_i centred at zero, as in production (change beyond the national one)
+        delta = pm.Deterministic('delta', sigma_delta * pm.Normal('d_off', 0, 1, shape=n_terr))
         p_hist = pm.math.invlogit(mu_hist + a)
         p_curr = pm.math.invlogit(mu_curr + a + delta)
-        kappa = pm.Gamma('kappa', alpha=3, beta=0.2)
+        kappa = pm.Gamma('kappa', alpha=2, beta=0.01)  # production prior
         pm.BetaBinomial('y_curr', alpha=p_curr * kappa, beta=(1 - p_curr) * kappa, n=n, observed=y)
         bb_h = pm.BetaBinomial.dist(alpha=p_hist * kappa, beta=(1 - p_hist) * kappa, n=np.maximum(n_h, 1))
         pm.Potential('y_hist', (pm.logp(bb_h, pt.as_tensor_variable(y_h))
                                 * pt.as_tensor_variable((n_h > 0).astype(float))).sum())
-        trace = pm.sample(draws=800, tune=600, chains=2, cores=2, target_accept=0.95,
+        trace = pm.sample(draws=800, tune=600, chains=2, cores=1, target_accept=0.95,
                           random_seed=seed, progressbar=False,
                           idata_kwargs={'log_likelihood': False})
 
@@ -131,7 +137,7 @@ def fit_two_period_delta(df: pd.DataFrame, national_rate: float,
 
 def sir_exceedance(df: pd.DataFrame, national_rate: float,
                    n_draws: int, rng: np.random.Generator) -> np.ndarray:
-    """P(SIR > 1.5) per territory from the two-step SIR axis, on the same data.
+    """P(SIR > SIR_THRESHOLD) per territory from the two-step SIR axis, on the same data.
 
     Draws current-rate posterior samples from the conjugate Beta posterior (a
     weakly-informative national-centred prior) and feeds them to the pipeline's
@@ -188,7 +194,7 @@ def main():
     results = [run_scenario(s, seed + i) for i, s in enumerate(scenarios)]
 
     print("=" * 104)
-    print("Trend detection: joint two-period model vs two-step SIR  |  trend = >=1.5x current-vs-history rise")
+    print("Trend detection: joint two-period model vs two-step SIR  |  parity: P(rise) above the FDR cut-off")
     print("=" * 104)
     hdr = f"{'scenario':<32}{'method':<14}{'sensitivity':>13}{'specificity':>13}{'emp.FDR':>10}{'flagged':>10}"
     print(hdr)

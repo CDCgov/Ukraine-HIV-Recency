@@ -32,9 +32,11 @@ compiler); with the reduced settings it took about 6 minutes in our test.
 jupyterlite/
   build_content.py      runs the pipeline on the synthetic data, exports content/data/ and the .jGIS map
   make_notebooks.py     writes the notebooks in content/ (edit text there, then re-run)
+  build_site.ps1        executes the notebooks, builds the site and the book, serves them
+  execute_notebooks.py  executes the notebooks in place, keeping the Pyodide kernelspec
   grids/                the eight DGGS grids (geometry only, cells of about 6-21 thousand km²)
   content/              what the site serves: notebooks, hotspots_lite.py, data/, myst.yml (book)
-  jupyter_lite_config.json, requirements-build.txt
+  jupyter_lite_config.json, requirements-build.txt, requirements-notebooks.txt
 ```
 
 ## Rebuilding
@@ -46,16 +48,20 @@ jupyterlite/
    python jupyterlite/make_notebooks.py         # only if the notebook text changed
    ```
 
-   Then execute the notebooks once so that their saved outputs (shown in the book
-   and on first opening) match the data.
+2. Execute the notebooks, build the site and the book, and look at them. One script
+   does all of it in PowerShell:
 
-2. Build the site locally (separate environment recommended):
-
-   ```bash
-   pip install -r jupyterlite/requirements-build.txt
-   cd jupyterlite && jupyter lite build            # -> jupyterlite/_output
-   cd content && jupyter book build --html         # -> jupyterlite/content/_build/html
+   ```powershell
+   .\jupyterlite\build_site.ps1                       # execute notebooks, build site and book
+   .\jupyterlite\build_site.ps1 -SkipExecute -Serve book   # build, then open the book
+   .\jupyterlite\build_site.ps1 -SkipExecute -SkipBuild -Serve lab   # just serve the site
    ```
+
+   On first use it creates a build environment in `jupyterlite/.venv` (git-ignored,
+   about 1.2 GB) from `requirements-build.txt` and `requirements-notebooks.txt`, and
+   reuses it afterwards. The book is served at http://localhost:8001/ and the site at
+   http://localhost:8001/lab/index.html. If PowerShell refuses to run scripts, start it
+   with `powershell -ExecutionPolicy Bypass -File .\jupyterlite\build_site.ps1`.
 
 3. Publishing: `.github/workflows/jupyterlite.yml` builds both and deploys them to
    GitHub Pages (manual trigger, or a push to `main` that touches `jupyterlite/`).

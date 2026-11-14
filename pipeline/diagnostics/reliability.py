@@ -39,9 +39,11 @@ replaces the blend with:
 
     - imputation penalty when the risk-group composition was filled in
       from the national mean rather than observed;
-    - current/historical-tests ratio penalty when the analysis window is
+    - current/historical testing-volume penalty when the analysis window is
       sparsely tested relative to baseline (the posterior is tight only
-      because the prior dominates locally).
+      because the prior dominates locally). Volume is compared per month
+      (tests per active month), because the baseline window is four times
+      longer than a three-month analysis window.
 
 Component scores (``data_adequacy_score``, ``sample_size_score``,
 ``model_quality_score``) are still computed and emitted as informational
@@ -59,6 +61,32 @@ import numpy as np
 import pandas as pd
 
 from pipeline.constants import ANALYSIS_CONSTANTS
+
+
+def _testing_volume_ratio(row: pd.Series) -> float:
+    """Current-to-baseline testing volume per month, or NaN when undefined.
+
+    The baseline window spans 12 months while the analysis window is usually
+    three, so raw test counts would give a ratio of about 0.25 at an unchanged
+    testing rate and penalise almost every territory. Tests per active month
+    (``testing_intensity_curr`` / ``testing_intensity_hist``, the same measure
+    the two-period model adjusts for) compare like with like. Raw counts are
+    used only when the intensity columns are absent.
+    """
+    def _num(key):
+        try:
+            v = float(row.get(key))
+        except (TypeError, ValueError):
+            return float('nan')
+        return v
+
+    ic, ih = _num('testing_intensity_curr'), _num('testing_intensity_hist')
+    if not (np.isnan(ic) or np.isnan(ih)):
+        return ic / ih if ih > 0 else float('nan')
+    nc, nh = _num('all_tested_curr'), _num('all_tested_hist')
+    if np.isnan(nc) or np.isnan(nh) or nh <= 0:
+        return float('nan')
+    return nc / nh
 
 
 class ReliabilityScoreCalculator:
@@ -129,7 +157,6 @@ class ReliabilityScoreCalculator:
     def calculate_territory_data_adequacy_score(row: pd.Series) -> Tuple[float, str]:
         """Per-territory data-adequacy score (kept as informational column)."""
         n_curr = row.get('all_tested_curr', 0)
-        n_hist = row.get('all_tested_hist', 0)
 
         if n_curr == 0:
             return 0, "No current tests"
@@ -143,8 +170,8 @@ class ReliabilityScoreCalculator:
         else:
             score, interpretation = 10, "High data sparsity"
 
-        if n_hist > 0:
-            ratio = n_curr / n_hist
+        ratio = _testing_volume_ratio(row)
+        if not np.isnan(ratio):
             if ratio < 0.3:
                 score = max(0, score - 20)
                 interpretation += f" (current/historical ratio: {ratio:.2f})"
@@ -293,13 +320,9 @@ class ReliabilityScoreCalculator:
             else:
                 overall = 100.0 * float(np.exp(-_cv))
 
-            _nh = row.get('all_tested_hist') or 0
-            try:
-                _nh = float(_nh)
-            except (TypeError, ValueError):
-                _nh = 0.0
-            if _nh > 0 and not pd.isna(overall):
-                _r = row['all_tested_curr'] / _nh
+            # Testing-volume penalty on tests per month (see _testing_volume_ratio).
+            _r = _testing_volume_ratio(row)
+            if not np.isnan(_r) and not pd.isna(overall):
                 if _r < 0.3:
                     overall = max(0.0, overall - 20.0)
                 elif _r < 0.5:

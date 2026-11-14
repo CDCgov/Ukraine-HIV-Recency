@@ -76,9 +76,9 @@ def fit(rc, nc, rh, nh):
     pmu = float(np.log(np.clip(nat, CLIP_MIN, CLIP_MAX) / (1 - np.clip(nat, CLIP_MIN, CLIP_MAX))))
     with pm.Model():
         mh = pm.Normal('mu_hist', pmu, 1.5); mc = pm.Normal('mu_curr', pmu, 1.5)
-        sa = pm.HalfNormal('sigma_a', 2); md = pm.Normal('mu_delta', 0, 1.0); sd = pm.HalfNormal('sigma_delta', 1.0)
+        sa = pm.HalfNormal('sigma_a', 2); sd = pm.HalfNormal('sigma_delta', 1.0)
         ao = pm.Normal('a_offset', 0, 1, shape=K); a = pm.Deterministic('a', sa * ao)
-        do = pm.Normal('d_offset', 0, 1, shape=K); delta = pm.Deterministic('delta', md + sd * do)
+        do = pm.Normal('d_offset', 0, 1, shape=K); delta = pm.Deterministic('delta', sd * do)  # centred at zero, as in production
         ph = pm.math.invlogit(mh + a); pc_ = pm.Deterministic('p_curr', pm.math.invlogit(mc + a + delta))
         kap = pm.Gamma('kappa', 2, 0.01)
         pm.BetaBinomial('y', alpha=pc_ * kap, beta=(1 - pc_) * kap, n=np.maximum(n, 1), observed=y)

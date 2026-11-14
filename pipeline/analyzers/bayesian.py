@@ -301,21 +301,27 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
 
             logit(p_it) = mu_t + a_i + delta_i * I(t = current)
 
-        where ``mu_t`` is the national logit level in each period (baseline vs
-        current national trend), ``a_i`` is a hierarchical territory intercept
-        and ``delta_i`` is a hierarchical territory-specific current-period
-        change. Each territory contributes TWO Beta-Binomial observations
-        (history and current), so ``a_i`` and ``delta_i`` are jointly identified
-        only because ``delta_i`` partially pools toward a common trend
-        ``mu_delta`` -- that shrinkage is what keeps the per-territory slope
-        well-behaved on units with very few recent events.
+        where ``mu_t`` is the national logit level in each period, so the
+        national change between windows is ``mu_curr - mu_hist``; ``a_i`` is a
+        hierarchical territory intercept and ``delta_i`` is the territory's
+        current-period change ON TOP OF the national change. ``delta_i`` is
+        centred at zero: a free common mean for ``delta`` would duplicate
+        ``mu_curr - mu_hist`` (the data identify only their sum), and that
+        unidentified direction would add prior-sized noise to every
+        ``delta_i`` and blunt the trend axis. Each territory contributes TWO
+        Beta-Binomial observations (history and current), so ``a_i`` and
+        ``delta_i`` are jointly identified only because ``delta_i`` partially
+        pools toward zero -- that shrinkage is what keeps the per-territory
+        change well-behaved on units with very few recent events.
 
         This replaces the two-step SIR machinery (fit the current window, then
         take a ratio against a separately EB-shrunk history): the trend is read
         DIRECTLY from the posterior of ``delta_i``. The "vs national now" axis
         (SMR) still comes from the current-period rate ``p_curr_i``; the trend
         axis (SIR) is ``exp(delta_i)``, the multiplicative current-vs-history
-        change (approximately the recency-proportion ratio at low prevalence).
+        change of the territory relative to the national change (approximately
+        a ratio of recency-proportion ratios at low prevalence). A rise that
+        the whole country shares is therefore not a local trend.
         Zero-count territories are handled by the taxonomy presence gate as
         before. Enabled with the config flag ``two_period_model``.
         """
@@ -375,9 +381,11 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
 
                 # Hierarchical territory intercept and current-period change.
                 sigma_a = pm.HalfNormal('sigma_a', sigma=2)
-                mu_delta = pm.Normal('mu_delta', mu=0.0, sigma=1.0)
+                # delta_i is centred at zero (no separate common trend): the
+                # national change is already mu_curr - mu_hist, so delta_i reads
+                # as the territory's change beyond the national one.
                 # Between-territory trend SD. Kept deliberately permissive: a tight
-                # prior over-shrinks genuine risers toward the common trend and the
+                # prior over-shrinks genuine risers toward zero change and the
                 # model then never clears the FDR-controlled exceedance cutoff (a
                 # simulation-confirmed failure mode). 1.0 on the logit scale allows
                 # a territory to move well away from the pool when the data support it.
@@ -387,10 +395,10 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
                     a_offset = pm.Normal('a_offset', mu=0, sigma=1, shape=n_terr)
                     a = pm.Deterministic('a', sigma_a * a_offset)
                     d_offset = pm.Normal('d_offset', mu=0, sigma=1, shape=n_terr)
-                    delta = pm.Deterministic('delta', mu_delta + sigma_delta * d_offset)
+                    delta = pm.Deterministic('delta', sigma_delta * d_offset)
                 else:
                     a = pm.Normal('a', mu=0, sigma=sigma_a, shape=n_terr)
-                    delta = pm.Normal('delta', mu=mu_delta, sigma=sigma_delta, shape=n_terr)
+                    delta = pm.Normal('delta', mu=0.0, sigma=sigma_delta, shape=n_terr)
 
                 # Testing-intensity effect on the level of each window (net-of-effort
                 # trend). One shared coefficient; the window enters via its own
@@ -503,8 +511,8 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
             df['sir_informative'] = df['all_tested_hist'].fillna(0).astype(float) > eb_K
 
             # Trend axis read DIRECTLY from the joint model: exp(delta_i) is the
-            # multiplicative current-vs-history change. Territories without a
-            # baseline keep delta ~ mu_delta (pooled), and the taxonomy's
+            # multiplicative current-vs-history change beyond the national
+            # change. Territories without a baseline keep delta ~ 0 (pooled), and the taxonomy's
             # sir_informative gate withholds a trend claim there.
             sir_threshold = float(_dt.get('sir_threshold', 1.0))
             ratio = np.exp(delta_samples)
@@ -513,9 +521,11 @@ class BayesianAnalyzer(BaseHotspotAnalyzer):
             df['sir_upper'] = np.percentile(ratio, 97.5, axis=0)
             df['exc_prob_sir'] = (delta_samples > np.log(sir_threshold)).mean(axis=0)
             df['exc_prob_sir_low'] = (delta_samples < -np.log(sir_threshold)).mean(axis=0)
+            _nat_change = float(np.exp((trace.posterior['mu_curr'] - trace.posterior['mu_hist']).values.mean()))
             logger.info(
                 f"Two-period: national_rate_curr={_smr_sir['national_rate_curr']:.4f}, "
-                f"mean trend exp(delta)={float(np.exp(delta_samples.mean())):.2f}, EB K={eb_K:.1f}"
+                f"national change exp(mu_curr - mu_hist)={_nat_change:.2f}, "
+                f"sigma_delta={float(trace.posterior['sigma_delta'].values.mean()):.2f}, EB K={eb_K:.1f}"
             )
 
             df = self.calculate_z_scores(df, national_rate)
