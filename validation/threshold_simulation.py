@@ -32,6 +32,7 @@ ROOT = str(Path(__file__).resolve().parent.parent)   # repo root
 sys.path.insert(0, ROOT)
 import pymc as pm, pytensor.tensor as pt
 from pipeline.standardization import bayesian_fdr_threshold
+from pipeline.aggregation.periods import baseline_months_for, months_between
 CLIP_MIN, CLIP_MAX = 0.001, 0.99
 # Output directory for the results file; defaults next to this script.
 SCR = sys.argv[1] if len(sys.argv) > 1 else str(Path(__file__).resolve().parent)
@@ -47,23 +48,27 @@ R_GRID = [1.0, 1.5, 2.0, 2.5, 3.0]      # SMR (vs national) ratio cutoffs
 T_GRID = [1.0, 1.5, 2.0]                # trend (delta) ratio cutoffs
 CONF = [0.75, 0.80, 0.85, 0.90, 0.95]   # posterior-probability confidence levels
 
-# ---- per-hex testing volumes in the production windows: a three-month analysis
-# window (March-May 2026, as in config.json) against the 12 months before it.
-# A longer current window would inflate the volumes and overstate sensitivity.
+# ---- per-hex testing volumes in the production windows: the analysis window
+# (default March-May 2026, as in config.json; set SIM_CUR_START/SIM_CUR_END to
+# change it) against the baseline the pipeline itself would use for a window of
+# that length (pipeline.aggregation.periods.baseline_months_for: 12 months for
+# windows up to 6 months, 18 for 7-9, 24 for 10-12). A current window longer
+# than the one analysed would inflate the volumes and overstate sensitivity.
 xl = pd.ExcelFile(DATA); c = xl.parse('hiv_cases')
 c['d'] = pd.to_datetime(c['test_date']); t = c['type'].astype(str).str.lower().str.strip()
 c['den'] = t.isin(['recent', 'long-term']); c = c[c['den']].copy()
 c['hex'] = [h3.latlng_to_cell(a, o, 3) for a, o in zip(c['latitude'], c['longitude'])]
 CUR_START = os.environ.get('SIM_CUR_START', '2026-03-01')
 CUR_END = os.environ.get('SIM_CUR_END', '2026-05-31')
-_cs = pd.Timestamp(CUR_START)
-cur = c[(c['d'] >= _cs) & (c['d'] <= pd.Timestamp(CUR_END))]
-his = c[(c['d'] >= _cs - pd.DateOffset(months=12)) & (c['d'] < _cs)]
+_cs, _ce = pd.Timestamp(CUR_START), pd.Timestamp(CUR_END)
+BASE_MONTHS = baseline_months_for(months_between(_cs, _ce))
+cur = c[(c['d'] >= _cs) & (c['d'] <= _ce)]
+his = c[(c['d'] >= _cs - pd.DateOffset(months=BASE_MONTHS)) & (c['d'] < _cs)]
 vol = pd.DataFrame({'n_cur': cur.groupby('hex').size(), 'n_his': his.groupby('hex').size()}).fillna(0).astype(int)
 vol = vol[vol['n_cur'] > 0].sort_values('n_cur', ascending=False).reset_index(drop=True)
 K = len(vol)
 NCUR = vol['n_cur'].to_numpy(); NHIS = np.maximum(vol['n_his'].to_numpy(), 1)
-print(f'windows: current {CUR_START}..{CUR_END}, history 12 months before', flush=True)
+print(f'windows: current {CUR_START}..{CUR_END}, history {BASE_MONTHS} months before', flush=True)
 print(f'{K} hexes; current volumes min/median/max = {NCUR.min()}/{int(np.median(NCUR))}/{NCUR.max()}', flush=True)
 
 # assign ground-truth roles (vol is sorted largest-first). The three outbreak
