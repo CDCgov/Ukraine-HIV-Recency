@@ -26,7 +26,8 @@ Scenarios vary
 
 Metrics per scenario: sensitivity by rise size, false-positive rate among
 territories without a local rise, empirical FDR, 95% interval coverage of the
-true local log change, and convergence (max R-hat).
+true local change, and convergence (max R-hat). The sampler uses the production
+settings for the number of territories (pipeline.models.sampling).
 
 Run:
     python validation/trend_power_simulation.py [out_dir]
@@ -53,6 +54,7 @@ import pytensor.tensor as pt
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import multipletests
 
+from pipeline.models.sampling import get_sampling_config
 from pipeline.standardization import bayesian_fdr_threshold
 
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent
@@ -103,8 +105,11 @@ def simulate(scn: Scenario, rng: np.random.Generator) -> pd.DataFrame:
         'y_c': rng.binomial(n_c, p_c), 'n_c': n_c,
         'y_h': rng.binomial(n_h, p_h), 'n_h': n_h,
         'effect': effect,
-        # true local log change beyond the national change (logit scale ~ log at low p)
-        'true_local': np.log(effect),
+        # True local change beyond the national change. The model's national
+        # change mu_curr - mu_hist absorbs the average change of all territories,
+        # so with many risers part of each rise is national; the truth is the
+        # territory's log rise minus the mean log rise (log ~ logit at low p).
+        'true_local': np.log(effect) - np.log(effect).mean(),
     })
 
 
@@ -126,7 +131,10 @@ def fit_model(df: pd.DataFrame, seed: int):
         pm.BetaBinomial('y_obs', alpha=p_c * kappa, beta=(1 - p_c) * kappa, n=n, observed=y)
         bb_h = pm.BetaBinomial.dist(alpha=p_h * kappa, beta=(1 - p_h) * kappa, n=n_h)
         pm.Potential('y_hist_ll', pm.logp(bb_h, pt.as_tensor_variable(y_h)).sum())
-        idata = pm.sample(draws=1000, tune=1000, chains=2, cores=1, target_accept=0.95,
+        # Production sampler settings for this number of territories.
+        sc = get_sampling_config(n_territories=K, fast_mode=False)
+        idata = pm.sample(draws=sc['draws'], tune=sc['tune'], chains=sc['chains'], cores=1,
+                          target_accept=max(sc['target_accept'], 0.95),
                           random_seed=seed, progressbar=False)
     dl = idata.posterior['delta'].values.reshape(-1, K)
     rhat = float(az.rhat(idata, var_names=['mu_hist', 'mu_curr', 'sigma_a', 'sigma_delta',
