@@ -42,7 +42,7 @@ def render_boundary_only_map(cfg: Dict[str, Any], gdf_oblast: gpd.GeoDataFrame,
 
         pct_div = diagnostics.get('pct_divergences', 'N/A')
         rhat_max = diagnostics.get('rhat_max', 'N/A')
-        ess_min = diagnostics.get('ess_alpha_min', diagnostics.get('min_ess_bulk', 'N/A'))
+        ess_min = diagnostics.get('ess_min', 'N/A')
         banner = (
             f"UNRELIABLE -- convergence_fatal\n"
             f"{model_name} model failed to converge for {level_name}\n"

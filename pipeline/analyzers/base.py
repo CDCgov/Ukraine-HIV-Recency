@@ -453,7 +453,7 @@ class BaseHotspotAnalyzer:
             try:
                 pct_div = diagnostics.get('pct_divergences')
                 rhat_max = diagnostics.get('rhat_max')
-                ess_min = diagnostics.get('ess_alpha_min', diagnostics.get('min_ess_bulk'))
+                ess_min = diagnostics.get('ess_min')
                 lines = [
                     "REPORT SKIPPED -- FATAL CONVERGENCE FAILURE",
                     "=" * 60,
