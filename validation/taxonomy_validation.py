@@ -40,20 +40,38 @@ HIST0, HIST1 = pd.Timestamp('2025-03-15'), pd.Timestamp('2026-02-15')
 CUR0, CUR1 = pd.Timestamp('2026-03-15'), pd.Timestamp('2026-05-15')
 PERIOD = '202603'
 
+# The history window spans 12 calendar months and the current window 3, so a
+# site with a steady monthly throughput accumulates four times as many tests in
+# the history window. The designs keep that ratio (n_hist = 4 * n_curr, same
+# recency proportion as intended). Equal test counts in both windows would mean
+# a four-fold jump in tests per month at the target alone; the detector's
+# testing-intensity term then reads part of the rise in recent infections as a
+# rise in testing effort, and the trend categories cannot be recovered. Only the
+# two designs that deliberately lack a usable baseline break the ratio:
+# 'elev_unc' (history too small to support a trend claim) and 'nodata' (no
+# current tests).
+#
+# The designs are set against the synthetic background, whose national recency
+# proportion is about 1.1% in the history window and 1.6% in the current one (a
+# national rise of about 1.46x). The trend axis reads a territory's change
+# beyond that national change, and the level axis compares with the current
+# national rate, so a "Normal" target sits at the national rate in both windows
+# and an "Emerging" target ends at the national level from a much lower past.
+#
 # (key, intended label, n_hist, r_hist, n_curr, r_curr, high_frac_curr, high_frac_hist)
 DESIGNS = [
-    ('established', 'Established hotspot',                     250, 8,  250, 45, 0.40, 0.40),
-    ('emerging',    'Emerging hotspot',                       250, 2,  250, 9,  0.35, 0.30),
-    ('stable',      'Stable high-burden',                     250, 45, 250, 45, 0.40, 0.40),
-    ('declining',   'Declining from high-burden',             250, 60, 250, 30, 0.40, 0.40),
-    ('emerg_dec',   'Emerging decrease',                      250, 20, 250, 6,  0.30, 0.40),
-    ('below_nat',   'Below national',                         250, 8,  300, 1,  0.20, 0.30),
-    ('normal',      'Normal',                                 250, 6,  250, 7,  0.25, 0.25),
-    ('elev_unc',    'Elevated vs national (trend uncertain)', 4,   0,  250, 40, 0.40, 0.25),
-    ('nodata',      'No Data',                                250, 6,  0,   0,  0.25, 0.25),
-    ('watch_burden','Watch: high burden (avg rate)',          800, 24, 800, 24, 0.30, 0.30),
-    ('watch_rate',  'Watch: high rate (few events)',          12,  1,  12,  4,  0.50, 0.40),
-    ('composition', 'Testing composition shift',              250, 10, 250, 26, 0.60, 0.20),
+    ('established', 'Established hotspot',                     1000, 32,  250, 45, 0.40, 0.40),
+    ('emerging',    'Emerging hotspot',                        2000, 3,   500, 8,  0.35, 0.30),
+    ('stable',      'Stable high-burden',                      1000, 180, 250, 45, 0.40, 0.40),
+    ('declining',   'Declining from high-burden',              1000, 240, 250, 30, 0.40, 0.40),
+    ('emerg_dec',   'Emerging decrease',                       1000, 60,  250, 4,  0.30, 0.40),
+    ('below_nat',   'Below national',                          2400, 7,   600, 2,  0.20, 0.30),
+    ('normal',      'Normal',                                  1000, 11,  250, 4,  0.25, 0.25),
+    ('elev_unc',    'Elevated vs national (trend uncertain)',  4,    0,   250, 40, 0.40, 0.25),
+    ('nodata',      'No Data',                                 1000, 24,  0,   0,  0.25, 0.25),
+    ('watch_burden','Watch: high burden (avg rate)',           3200, 36,  800, 13, 0.30, 0.30),
+    ('watch_rate',  'Watch: high rate (few events)',           48,   4,   12,  4,  0.50, 0.40),
+    ('composition', 'Testing composition shift',               1000, 40,  250, 26, 0.60, 0.20),
 ]
 
 
@@ -198,6 +216,10 @@ def main():
                 wr = str(r.get('watch_reason', '') or '')
                 row['detected'] = cls
                 row['watch'] = (wr if onwl and wr else ('yes' if onwl else '-'))
+            elif intended == 'No Data':
+                # A hex with no current tests is left out of the report by
+                # design, which is the No Data outcome.
+                row['detected'] = 'No Data (absent from report)'; row['watch'] = '-'
             else:
                 row['detected'] = 'HEX-NOT-FOUND'; row['watch'] = '-'
             shutil.rmtree(outdir, ignore_errors=True)

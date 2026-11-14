@@ -16,7 +16,9 @@ What it does
 For each seed in ``--seeds`` it runs one analysis window (the config's
 ``analysis_period``) at one H3 resolution through the actual
 :class:`~pipeline.analyzers.bayesian.BayesianAnalyzer` -- same aggregation,
-same model, same FDR-controlled SIR/SMR taxonomy as production -- and records
+same detector (the joint two-period Beta-Binomial model when ``two_period_model``
+is set, as in ``config.json``), same FDR-controlled SIR/SMR taxonomy as
+production -- and records
 each territory's label. It then reports, per territory, the modal label and the
 fraction of seeds that agree with it, plus an overall summary (mean agreement,
 how many territories were perfectly stable, and how many ever entered the
@@ -50,6 +52,7 @@ from typing import Dict, List
 import pandas as pd
 
 from pipeline.analyzers import BayesianAnalyzer
+from pipeline.orchestration import run_bayesian_dispatch
 from pipeline.aggregation.periods import get_periods
 from pipeline.classification import HOTSPOT_LABELS
 from pipeline.constants import DEFAULT_CONFIG
@@ -70,9 +73,10 @@ def _territory_key_column(gdf) -> str:
 def _labels_for_seed(config: Dict, seed: int, resolution: int) -> Dict[str, str]:
     """Fit the model once under ``seed`` and return ``{territory_id: label}``.
 
-    Mirrors the single-window fit path used by the orchestrator: load cases,
-    compute the national baseline over the baseline window, load and aggregate
-    the geometry for the requested resolution, then run the Bayesian model.
+    Mirrors the fit path used by the orchestrator: load cases, compute the
+    national baseline over the baseline window, load and aggregate the geometry
+    for the requested resolution, then run the model through the production
+    dispatcher (the joint two-period detector when ``two_period_model`` is on).
     Only the seed differs between calls.
     """
     config = dict(config)
@@ -86,8 +90,9 @@ def _labels_for_seed(config: Dict, seed: int, resolution: int) -> Dict[str, str]
     gdf = analyzer.load_geodata(resolution)
     gdf = analyzer.aggregate_stats(gdf, gdf_cases, start, end, b_start, b_end)
 
-    gdf_result, diagnostics = analyzer.run_model(
-        gdf, f"Hex_Res{resolution}", national_rate, national_se)
+    gdf_result, diagnostics = run_bayesian_dispatch(
+        analyzer, gdf, f"Hex_Res{resolution}", national_rate, national_se, config)
+    logger.warning(f"seed={seed}: model = {(diagnostics or {}).get('model_type', '?')}")
 
     if diagnostics is None:
         logger.warning(f"seed={seed}: model returned no diagnostics; skipping")
