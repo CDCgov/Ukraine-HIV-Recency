@@ -183,6 +183,27 @@ def make_jgis(cells, oblasts, sites) -> None:
 
     sources, layers, tree = {}, {}, []
 
+    def style(fill, stroke, width, radius=None):
+        """Single-symbol style in the JupyterGIS 0.18 grammar format.
+
+        The renderer draws a vector layer only from ``symbologyState.layers``;
+        the flat ``fillColor``/``strokeColor`` keys are kept for the style
+        dialog but are not enough on their own (the layer stays invisible).
+        """
+        def rule(scheme, value, encodings):
+            return {'id': str(uuid.uuid4()),
+                    'mappings': [{'scale': {'scheme': scheme, 'params': {'value': value}},
+                                  'encodings': encodings}]}
+        rules = [rule('constant_rgba', fill, ['fill-color', 'circle-fill-color']),
+                 rule('constant_rgba', stroke, ['stroke-color', 'circle-stroke-color']),
+                 rule('constant_num', width, ['stroke-width', 'circle-stroke-width'])]
+        state = {'fillColor': fill, 'strokeColor': stroke, 'strokeWidth': width}
+        if radius is not None:
+            rules.append(rule('constant_num', radius, ['circle-radius']))
+            state['radius'] = radius
+        state['layers'] = [{'id': str(uuid.uuid4()), 'rules': rules}]
+        return state
+
     def add(name, data, symbology, visible=True, opacity=1.0):
         sid, lid = str(uuid.uuid4()), str(uuid.uuid4())
         sources[sid] = {'name': f'{name} source', 'type': 'GeoJSONSource', 'parameters': {'data': data}}
@@ -207,17 +228,17 @@ def make_jgis(cells, oblasts, sites) -> None:
         if sub.empty:
             continue
         add(label, json.loads(sub[[c for c in props if c in sub.columns] + ['geometry']].round(3).to_json()),
-            {'fillColor': _rgba(color, 0.75), 'strokeColor': [80, 80, 80, 1], 'strokeWidth': 0.6})
+            style(_rgba(color, 0.75), [80, 80, 80, 1], 0.6))
     low = active[active['reliability'] == 'LOW']
     if not low.empty:
         add('Low reliability (outline)', json.loads(low[['cell_id', 'geometry']].to_json()),
-            {'fillColor': [0, 0, 0, 0], 'strokeColor': [20, 20, 20, 1], 'strokeWidth': 2.2})
+            style([0, 0, 0, 0], [20, 20, 20, 1], 2.2))
     add('Oblast borders', json.loads(oblasts.to_json()),
-        {'fillColor': [0, 0, 0, 0], 'strokeColor': [110, 110, 110, 1], 'strokeWidth': 0.8})
+        style([0, 0, 0, 0], [110, 110, 110, 1], 0.8))
     pts = gpd.GeoDataFrame(sites[['site_id']], geometry=gpd.points_from_xy(sites.longitude, sites.latitude),
                            crs='EPSG:4326')
     add('Synthetic testing sites', json.loads(pts.to_json()),
-        {'fillColor': [0, 0, 0, 1], 'strokeColor': [255, 255, 255, 1], 'strokeWidth': 0.5, 'radius': 3})
+        style([0, 0, 0, 1], [255, 255, 255, 1], 0.5, radius=3))
 
     doc = {
         'schemaVersion': '0.7.2', 'layers': layers, 'sources': sources, 'layerTree': tree,
