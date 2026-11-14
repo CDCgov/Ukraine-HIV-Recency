@@ -58,6 +58,8 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from pipeline.constants import ANALYSIS_CONSTANTS
+
 
 class ReliabilityScoreCalculator:
     """Reliability calculator (hard gate + CV-based per-territory score)."""
@@ -226,17 +228,21 @@ class ReliabilityScoreCalculator:
         """
         model_score, _ = ReliabilityScoreCalculator.calculate_model_quality_score(diagnostics)
 
+        # Run-level hard gate: R-hat and bulk ESS over EVERY posterior variable
+        # (``rhat_max`` / ``ess_min`` from compute_bayesian_diagnostics).
+        _rhat_raw = diagnostics.get('rhat_max', diagnostics.get('rhat_max_all'))
         try:
-            _rhat = float(diagnostics.get('rhat_max') or 0.0)
+            _rhat = float(_rhat_raw) if _rhat_raw is not None else 0.0
         except (TypeError, ValueError):
             _rhat = 0.0
-        _ess_raw = diagnostics.get('ess_alpha_min', diagnostics.get('min_ess_bulk'))
+        _ess_raw = diagnostics.get('ess_min', diagnostics.get('ess_min_all'))
         try:
             _ess = float(_ess_raw) if _ess_raw is not None else float('inf')
         except (TypeError, ValueError):
             _ess = float('inf')
         if (bool(diagnostics.get('convergence_fatal', False))
-                or _rhat >= 1.01 or _ess < 400):
+                or _rhat >= ANALYSIS_CONSTANTS['rhat_max']['value']
+                or _ess < ANALYSIS_CONSTANTS['ess_min_per_chain']['value']):
             df['reliability_score'] = np.nan
             df['reliability_category'] = "UNRELIABLE"
             df['data_adequacy_score'] = np.nan

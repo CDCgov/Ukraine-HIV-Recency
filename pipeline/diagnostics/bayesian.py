@@ -64,9 +64,10 @@ def calculate_bayesian_diagnostics(trace, df, level_name, national_rate, model=N
     # Run-level convergence: the largest R-hat over EVERY posterior variable
     # (per-territory effects and hyperparameters such as kappa, sigma_a,
     # mu_hist / mu_curr, beta_intensity) must sit below 1.01 (Vehtari et al.
-    # 2021) -- the same threshold the per-territory reliability gate uses.
+    # 2021). ``rhat_max`` is the key the reliability gate and the reports read.
     _rhat_thr = ANALYSIS_CONSTANTS['rhat_max']['value']
     diagnostics['rhat_max_all'] = float(np.nanmax([float(rhat[v].max().values) for v in rhat.data_vars]))
+    diagnostics['rhat_max'] = diagnostics['rhat_max_all']
     diagnostics['convergence_ok'] = 'Yes' if diagnostics['rhat_max_all'] < _rhat_thr else 'No'
 
     # Effective sample size
@@ -82,9 +83,11 @@ def calculate_bayesian_diagnostics(trace, df, level_name, national_rate, model=N
         diagnostics['ess_mu_alpha'] = None
 
     # Run-level ESS: the smallest bulk ESS over every posterior variable must
-    # exceed 400 (Vehtari et al. 2021), matching the reliability gate.
+    # exceed 400 (Vehtari et al. 2021). ``ess_min`` is the key the reliability
+    # gate and the reports read.
     _ess_thr = ANALYSIS_CONSTANTS['ess_min_per_chain']['value']
     diagnostics['ess_min_all'] = float(np.nanmin([float(ess[v].min().values) for v in ess.data_vars]))
+    diagnostics['ess_min'] = diagnostics['ess_min_all']
     diagnostics['ess_adequate'] = 'Yes' if diagnostics['ess_min_all'] > _ess_thr else 'No'
 
     # Divergences (NEW)

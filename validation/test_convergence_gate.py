@@ -109,7 +109,7 @@ def main() -> None:
         'convergence_fatal': True,
         'pct_divergences': 12.5,
         'rhat_max': 1.18,
-        'ess_alpha_min': 42,
+        'ess_min': 42,
         'convergence_ok': 'No',
     }
 
