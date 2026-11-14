@@ -14,9 +14,14 @@ STRUCTURE as the real one but contains no real record and no real coordinate:
     an exact copy. This reproduces the TIME course of the recency share, so the
     hotspot detection (current window versus history) sees the same signal on
     the synthetic data that it does on the real data;
-  * each month's case dates fall inside that month, trimmed to the site's
-    operating window (activation/deactivation);
-  * activation_date / deactivation_date are carried over verbatim.
+  * each month's case dates fall inside that month (in the opening and closing
+    months they are spread over the whole month, see below);
+  * activation_date / deactivation_date are coarsened to whole months: the
+    activation moves to the first day of its month and the deactivation to the
+    last day of its month, so the exact opening and closing days of real sites
+    are not published. The pipeline uses these dates only at month resolution
+    (is a site active in the window; tests per active month), so the analysis
+    is unchanged.
 
 The result is synthetic_input_data.xlsx with the hiv_cases and testing_sites
 sheets — exactly the columns the pipeline expects. The run is reproducible
@@ -62,6 +67,16 @@ def month_bounds(ym: str) -> tuple[pd.Timestamp, pd.Timestamp]:
     return start, end
 
 
+def month_floor(d):
+    """First day of the month of ``d`` (NaT stays NaT)."""
+    return pd.NaT if pd.isna(d) else pd.Period(pd.to_datetime(d), freq="M").start_time.normalize()
+
+
+def month_ceil(d):
+    """Last day of the month of ``d`` (NaT stays NaT)."""
+    return pd.NaT if pd.isna(d) else pd.Period(pd.to_datetime(d), freq="M").end_time.normalize()
+
+
 def clip_to_operation(lo: pd.Timestamp, hi: pd.Timestamp,
                       act, deact) -> tuple[pd.Timestamp, pd.Timestamp]:
     """Clip the range [lo, hi] to the site's operating window (activation/deactivation)."""
@@ -95,8 +110,8 @@ def main() -> None:
             "site_id": sid,
             "longitude": round(site_pt.x, 6),
             "latitude": round(site_pt.y, 6),
-            "activation_date": row["activation_date"],
-            "deactivation_date": row["deactivation_date"],
+            "activation_date": month_floor(row["activation_date"]),
+            "deactivation_date": month_ceil(row["deactivation_date"]),
         })
 
         site_months = months_by_site.get(sid)
@@ -129,7 +144,15 @@ def main() -> None:
                 lo, hi = month_bounds(m["year_month"])
             span_days = max(int((hi - lo).days), 0)
             offsets = rng.integers(0, span_days + 1, size=n_m) if span_days > 0 else np.zeros(n_m, int)
-            dates = pd.to_datetime(lo) + pd.to_timedelta(offsets, unit="D")
+            # Spread the dates over the WHOLE month, so the published dates carry
+            # no trace of the real opening or closing day. The mapping is
+            # deterministic (no extra random draws), so every other draw of the
+            # generator, and hence the rest of the file, stays the same; outside
+            # the opening and closing months it is the identity.
+            m_lo, m_hi = month_bounds(m["year_month"])
+            m_span = int((m_hi - m_lo).days)
+            offsets = np.floor((offsets + 0.5) / (span_days + 1) * (m_span + 1)).astype(int)
+            dates = pd.to_datetime(m_lo) + pd.to_timedelta(offsets, unit="D")
 
             # case coordinates: scattered around the site with a small offset (residence stand-in)
             lons = site_pt.x + rng.normal(0, JITTER_DEG, n_m)
