@@ -216,8 +216,9 @@ noisy areas more firmly towards the national level.
 ## Step 3. Trend: compared with the area's own past
 
 The production model fits both windows **jointly**: each area has its own level and
-its own change between the baseline and the analysis window, and the change is
-partially pooled towards the national change. An area is *rising* when the posterior
+its own change between the baseline and the analysis window. That change is measured
+beyond the national change, so a rise the whole country shares is not a local trend,
+and it is partially pooled towards zero. An area is *rising* when the posterior
 probability of a positive change is at least 0.80. Pooling matters here, because many
 areas have no recent results at all in one of the windows.
 
@@ -501,7 +502,7 @@ logit *p*<sub>it</sub> = μ<sub>t</sub> + *a*<sub>i</sub> + δ<sub>i</sub>·[t =
 
 * μ<sub>t</sub>: national level in each window;
 * *a*<sub>i</sub>: the area's own level, pooled across areas;
-* δ<sub>i</sub>: the area's change between windows, pooled towards a common change;
+* δ<sub>i</sub>: the area's change between windows beyond the national change μ<sub>current</sub> − μ<sub>history</sub>, pooled towards zero;
 * β·*z*<sub>it</sub>: adjustment for testing effort (test-months), so the trend is not
   driven by sites opening or closing;
 * recent counts are Beta-Binomial with a concentration κ learned from the data.
@@ -511,10 +512,9 @@ with pm.Model() as model:
     mu_hist = pm.Normal("mu_hist", mu=prior_mu, sigma=1.5)
     mu_curr = pm.Normal("mu_curr", mu=prior_mu, sigma=1.5)
     sigma_a = pm.HalfNormal("sigma_a", sigma=2)
-    mu_delta = pm.Normal("mu_delta", mu=0.0, sigma=1.0)
     sigma_delta = pm.HalfNormal("sigma_delta", sigma=1.0)
     a = pm.Deterministic("a", sigma_a * pm.Normal("a_offset", 0, 1, shape=K))
-    delta = pm.Deterministic("delta", mu_delta + sigma_delta * pm.Normal("d_offset", 0, 1, shape=K))
+    delta = pm.Deterministic("delta", sigma_delta * pm.Normal("d_offset", 0, 1, shape=K))
     beta_intensity = pm.Normal("beta_intensity", mu=0.0, sigma=1.0)
     p_hist = pm.Deterministic("p_hist", pm.math.invlogit(mu_hist + a + beta_intensity * z_h))
     p_curr = pm.Deterministic("p_curr", pm.math.invlogit(mu_curr + a + delta + beta_intensity * z_c))
