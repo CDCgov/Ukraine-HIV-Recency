@@ -63,7 +63,6 @@ jupyterlite/
 
 ## Privacy
 
-Only synthetic data and public boundaries are shipped. Grid files contain cell
-geometry only. The synthetic dataset keeps the coarse, oblast-level aggregate shape
-of the real programme (see `synthetic_data/README.md`), so regional patterns in these
-results resemble the real ones by design; individual sites and locations do not.
+Only synthetic data and public boundaries are shipped, and the notebooks say nothing
+about results on real data. Grid files contain cell geometry only. How the synthetic
+dataset was generated is described in `synthetic_data/README.md`.

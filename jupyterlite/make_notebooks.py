@@ -52,9 +52,9 @@ is installed on your computer and no data leaves the page.
 **What the data are.** The pipeline uses results of recent-infection testing among
 people newly diagnosed with HIV. Each record is one test at one testing site, marked
 *recent* or *long-term*. The synthetic file has exactly that structure, but **no
-record and no location is real**: sites are random points inside their true oblast,
-and case counts are random draws that keep only the coarse, aggregate shape of the
-real programme (about one to two per cent of tests are recent).
+record and no location is real**: sites are random points inside an oblast and
+case counts are random draws. In this dataset about one to two per cent of tests are
+recent.
 
 **What the notebooks cover.**
 
@@ -123,8 +123,8 @@ for name, (a, b) in {"baseline": (b_start, b_end), "analysis": (start, end)}.ite
     md('''
 ## Where the sites are
 
-Each synthetic site sits at a random point inside its real oblast, so the map keeps
-only the regional pattern of the testing network, not real clinic locations.
+Each synthetic site is a random point inside an oblast; none of these points is a
+clinic location.
 '''),
     code('''
 ax = oblasts.to_crs("EPSG:3035").boundary.plot(figsize=(9, 6.5), color="0.6", linewidth=0.5)
@@ -420,21 +420,18 @@ for a, b in itertools.product(names, names):
 jac.round(2)
 '''),
     md('''
-## How we use this
+## How to read the comparison
 
-Applied to the real data, this check led to three conclusions that the synthetic
-example also illustrates:
-
-* the strongest signals appear on most grids, so the choice of grid does not create
-  them;
-* what the grid does change is **which neighbouring sites share a cell** with the
+* A signal that appears on most grids does not depend on where the cell borders fall,
+  so the choice of grid did not create it.
+* A signal that appears on one or two grids only deserves caution: it may come from a
+  particular way of grouping neighbouring sites.
+* What the grid changes most is **which neighbouring sites share a cell** with the
   site that produces the signal, and therefore the outline and the name of the hotspot
-  on the map;
-* H3 agreed with the majority of the other grids about as well as any other grid did.
-
-H3 therefore stays the primary grid, the multi-grid comparison is run as a
-sensitivity analysis, and a hotspot is reported together with the sites that produce
-its recent results, not only with the name of the area at the cell's centre.
+  on the map. It is therefore worth reporting a hotspot together with the sites that
+  produce its recent results, not only with the name of the area at the cell's centre.
+* In the pipeline H3 is the primary grid; the multi-grid comparison is a sensitivity
+  check.
 '''),
 ])
 
